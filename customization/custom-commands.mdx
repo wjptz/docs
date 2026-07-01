@@ -1,0 +1,141 @@
+---
+title: "Add Custom Slash Commands to Your Trellis Workflow"
+sidebarTitle: "Commands"
+description: "Create platform-specific Markdown command files to give users explicit on-demand entry points into any step of your Trellis workflow."
+---
+
+Trellis ships a deliberately small set of slash commands. On agent-capable platforms — Claude Code, OpenCode, Cursor, Codex, Pi Agent, and others — only `finish-work` and `continue` are installed. The `start` command is not user-facing on those platforms because session startup context loads automatically through a `SessionStart` hook, extension, `AGENTS.md`, or prompt-hook bootstrap. On agent-less platforms (Kilo, Antigravity, Devin), where no hook primitive exists, `start` ships as a slash command. Everything else that was once a command has moved to auto-trigger skills. Add your own slash command when you have a specific entry point you want users to invoke on demand.
+
+## Commands vs. skills
+
+Before writing a command, decide whether a command or a skill is the right tool for the job.
+
+| Use a slash command when… | Use a skill when… |
+|---|---|
+| The user should decide when to run it | The AI should trigger it automatically based on intent |
+| It marks a session boundary (start, finish, resume) | It's a phase inside a task (before-dev, check, update-spec) |
+| There's no natural trigger phrase that would match reliably | There's a predictable user intent you can match on |
+| You need it available even when no task is active | It only makes sense in the context of an active task |
+
+If the answer is "both", ship a skill and expose a command that manually triggers that skill.
+
+## Command file format and location
+
+Command files are Markdown (except Gemini CLI, which uses TOML). Trellis groups its supported platforms into three delivery models.
+
+### Explicit slash commands
+
+The user types a slash command; the platform injects the command file's content as a prompt.
+
+| Platform | Location | Invoked as |
+|---|---|---|
+| Claude Code | `.claude/commands/trellis/{name}.md` | `/trellis:{name}` |
+| Cursor | `.cursor/commands/trellis-{name}.md` | `/trellis-{name}` |
+| OpenCode | `.opencode/commands/trellis/{name}.md` | `/trellis:{name}` |
+| Codex | `.codex/prompts/trellis-{name}.md` | `/trellis-{name}` |
+| Gemini CLI | `.gemini/commands/trellis/{name}.toml` | `/trellis:{name}` |
+| Qoder | `.qoder/commands/trellis-{name}.md` (requires `name` + `description` YAML frontmatter) | `/trellis-{name}` |
+| CodeBuddy | `.codebuddy/commands/trellis/{name}.md` | `/trellis:{name}` |
+| Droid | `.factory/commands/trellis/{name}.md` | `/trellis:{name}` |
+| Pi Agent | `.pi/prompts/trellis-{name}.md` | `/trellis-{name}` |
+| Copilot | `.github/prompts/trellis-{name}.prompt.md` | prompt-file picker |
+
+Gemini CLI command files use TOML with a `prompt = """..."""` field instead of plain Markdown.
+
+### Workflow files
+
+These platforms have no dedicated slash-command primitive. Users invoke a "workflow" by name through the platform's workflow UI.
+
+| Platform | Location | Invoked as |
+|---|---|---|
+| Kilo | `.kilocode/workflows/{name}.md` | `/{name}.md` (Kilo's workflow UI) |
+| Antigravity | `.agent/workflows/{name}.md` | opened from `.agent/workflows/` |
+| Devin | `.devin/workflows/trellis-{name}.md` | `/trellis-{name}` |
+
+### Skill-only platforms
+
+Kiro does not expose a slash-command primitive. The `start`, `finish-work`, and `continue` entry points ship as auto-trigger skills instead.
+
+| Platform | `start` / `finish-work` / `continue` as… | Invoked as |
+|---|---|---|
+| Kiro | `.kiro/skills/trellis-{name}/SKILL.md` | skill match (or `@trellis:{name}`) |
+
+## Writing a command file
+
+A good command file gives the AI a clear, unambiguous task. Follow these steps when writing one:
+
+<Steps>
+  <Step title="Start with a one-line description">
+    Open with a single sentence describing what will happen when the user runs this command.
+  </Step>
+  <Step title="List the steps the AI should take, in order">
+    Use a numbered list or clearly ordered headings so the AI knows exactly what to do and in what sequence.
+  </Step>
+  <Step title="Specify the files the AI should read before acting">
+    Include a `## Read context` section with the shell commands needed to surface relevant specs, configs, or logs.
+  </Step>
+  <Step title="Define the expected output format">
+    Specify whether the result should be a report, a checklist, a diff, a summary, or some other format. Consistent output makes commands predictable and reviewable.
+  </Step>
+</Steps>
+
+Use this template as a starting point:
+
+````markdown
+# Command Name
+
+Brief description of what this command does.
+
+## Read context
+
+```bash
+cat .trellis/spec/relevant-spec.md
+```
+
+## Analyze
+
+Describe what to analyze and against which rules.
+
+## Report
+
+Output format and fields.
+````
+
+## Example: a `/trellis:deploy-check` command
+
+Create `.claude/commands/trellis/deploy-check.md`:
+
+````markdown
+# Deploy Check
+
+Pre-deployment verification checklist.
+
+## Read deployment config
+
+```bash
+cat deploy.config.js
+cat .env.production
+```
+
+## Verify
+
+Check these items:
+
+- [ ] All tests pass
+- [ ] No TODO comments in production code
+- [ ] Environment variables are set
+- [ ] Database migrations are up to date
+- [ ] API endpoints are documented
+
+## Report
+
+Output a deployment readiness report.
+````
+
+Users on Claude Code invoke it with `/trellis:deploy-check`. To ship the same command on other platforms, create parallel files in the platform-specific locations from the table above using the same Markdown content.
+
+<Note>
+  The built-in commands are `finish-work` and `continue` on agent-capable platforms, and `start` on
+  agent-less platforms (Kilo, Antigravity, Devin). All other workflow behavior has moved to
+  auto-trigger skills. See [Custom Skills](/customization/custom-skills) for the skills reference.
+</Note>

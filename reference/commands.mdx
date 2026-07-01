@@ -1,0 +1,277 @@
+---
+title: "Suncode CLI, Commands, and Skills: Full Reference Guide"
+sidebarTitle: "Commands"
+description: "Complete reference for every Suncode CLI command, session command, auto-trigger skill, sub-agent, and task.py subcommand in one place."
+---
+
+Suncode (Trellis) keeps its user-facing command surface intentionally small. Since version 0.5.0 the framework is **skill-first**: most of the workflow runs automatically through auto-trigger skills that the platform fires based on context. You only need to remember a handful of session-boundary commands, and the `trellis` CLI for upgrades and project maintenance.
+
+## Surface at a Glance
+
+| Kind | Name | Trigger | Purpose |
+|------|------|---------|---------|
+| **Command** | `/trellis:start` | Manual, on platforms without an automatic SessionStart hook | Open a session, load context, classify work |
+| **Command** | `/trellis:finish-work` | Manual, after Phase 3.4 commits land | Archive the task and record the session in the journal |
+| **Command** | `/trellis:continue` | Manual | Advance the current task to its next workflow step |
+| **CLI** | `trellis upgrade` | Manual, when the global CLI package is stale | Upgrade the installed Trellis CLI package |
+| **CLI** | `trellis update` | Manual, to sync project files to the current CLI version | Update `.trellis/` templates and platform files in the project |
+| **Skill** | `trellis-brainstorm` | Auto — planning after task-creation consent | Clarify requirements, inspect evidence, draft planning artifacts |
+| **Skill** | `trellis-before-dev` | Auto — before touching code in a task | Read relevant spec before writing code |
+| **Skill** | `trellis-check` | Auto — after implementation; also via sub-agent | Verify + self-fix loop |
+| **Skill** | `trellis-update-spec` | Auto — when a learning is worth capturing | Promote knowledge into `.trellis/spec/` |
+| **Skill** | `trellis-break-loop` | Auto — after a tricky bug is resolved | Root-cause and prevention analysis |
+| **Sub-agent** | `trellis-research` | Spawned by the main session for investigation | Read-only codebase search |
+| **Sub-agent** | `trellis-implement` | Spawned by the main session for coding | Writes code, no `git commit` |
+| **Sub-agent** | `trellis-check` | Spawned by the main session for verification | Runs verify and self-fix loop internally |
+
+---
+
+## CLI Commands
+
+Trellis tracks three separate versions. Understanding them explains why a full upgrade is two steps.
+
+<Note>
+  **Three version types:**
+  1. **Published** — the latest version on npm.
+  2. **Local CLI** — your globally installed `trellis` binary.
+  3. **Project** — the `.trellis/` templates and platform files inside your repo.
+
+  `trellis upgrade` raises **Local CLI → Published**. `trellis update` raises **Project → Local CLI**. Run `trellis upgrade` first, then `trellis update` inside each project.
+</Note>
+
+### `trellis upgrade`
+
+Upgrades your globally installed Trellis CLI package to the latest published release. It does **not** change any files in the current project — run `trellis update` afterward to sync project files.
+
+```bash
+trellis upgrade              # follows your current channel: latest / beta / rc
+trellis upgrade --tag latest # explicitly install the latest stable release
+trellis upgrade --tag beta   # install the latest beta release
+trellis upgrade --dry-run    # print the npm command without running it
+```
+
+| Flag | Description |
+|------|-------------|
+| `--tag <tag>` | Explicit dist-tag or version to install (e.g. `latest`, `beta`, `rc`) |
+| `--dry-run` | Preview the npm command without executing it |
+
+<Note>
+  `trellis upgrade` was added in CLI 0.6.0. If your installed CLI is 0.5.x or older the command does not exist yet. Bootstrap with `npm install -g @mindfoldhq/trellis@latest` directly, then use `trellis upgrade` for all future bumps.
+</Note>
+
+### `trellis update`
+
+Syncs the current project's `.trellis/` templates, platform files, hooks, skills, and commands to the version bundled in your local CLI. Run this inside each Trellis project after upgrading the CLI.
+
+```bash
+trellis update               # update to the local CLI version
+trellis update --dry-run     # preview changes without writing files
+trellis update --migrate     # apply breaking-change migrations (required for major bumps)
+trellis update -f            # force overwrite locally-modified files
+trellis update -s            # skip locally-modified files
+```
+
+| Flag | Description |
+|------|-------------|
+| `--dry-run` | Preview which files would change without writing anything |
+| `--migrate` | Apply breaking-change migration manifests (rename, delete). Required when upgrading from 0.5.x to 0.6.x |
+| `-f` | Force overwrite files you have modified locally |
+| `-s` | Skip files you have modified locally |
+
+Trellis uses a template-hash mechanism (`.trellis/.template-hashes.json`) to detect files you have modified: if the local hash matches the recorded template hash, the file is safe to overwrite; if it differs, Trellis prompts you or respects `-f` / `-s`.
+
+### `trellis init`
+
+Initializes Trellis in a new project, or adds platforms and developer identity to an existing project.
+
+```bash
+trellis init -u your-name --claude   # initialize with Claude Code
+trellis init -u your-name --cursor   # add Cursor support
+trellis init -u your-name --codex    # add Codex support
+trellis init -u your-name --trae     # add Trae IDE support
+trellis init --with-statusline       # include opt-in Claude Code status bar
+trellis init -y                      # non-interactive / CI mode
+trellis init --template <id>         # initialize from a named workflow template
+trellis init --registry <provider:repo/path>  # initialize from a custom registry
+```
+
+When Trellis is already initialized, `trellis init` offers three choices:
+
+| Option | When to pick |
+|--------|--------------|
+| **Add AI platform(s)** | You want to add a platform others haven't configured yet |
+| **Set up developer identity on this device** | You're a new team member who just needs to write your identity |
+| **Full re-initialize** | Project config is broken and you want a clean slate |
+
+---
+
+## Session Commands
+
+Session commands are the user-facing entry points for the workflow. Most platforms install `finish-work` and `continue` automatically; `start` is only needed on platforms without an automatic SessionStart hook.
+
+### `/trellis:start`
+
+Starts a Trellis session by loading context, surfacing developer identity, active tasks, and git status, and classifying your intent.
+
+**What it does:**
+1. Reads `.trellis/workflow.md` so the AI knows the workflow contract.
+2. Runs `get_context.py` to surface developer identity, git status, and active tasks.
+3. Reads spec indexes for the relevant package(s).
+4. Reports context and asks what you want to work on.
+
+**When to use it:** Run `/trellis:start` at the beginning of a session if your platform does not auto-inject context. On hook-capable and extension-capable platforms — Claude Code, Cursor, OpenCode, Gemini CLI, Qoder, CodeBuddy, GitHub Copilot, Droid, Pi Agent, and Codex with `features.hooks = true` — the SessionStart hook or extension does this automatically, so `start` is typically not installed as a user-facing command on those platforms.
+
+**Task classification the AI applies at startup:**
+
+| Type | Criteria | Flow |
+|------|----------|------|
+| Simple conversation | Question, explanation, lookup, or discussion with no repo change | No task by default; ask only if a task might help |
+| Inline small task | Contained edit verifiable in one turn | Ask only whether to create a task; if no, skip Trellis |
+| Full Trellis task | Multi-file or durable planning work | Ask for task-creation consent and enter planning |
+
+### `/trellis:finish-work`
+
+Archives the completed task and records the session in the journal. **Requires a clean working tree** — run this after all code is committed (Phase 3.4).
+
+**What it does:**
+1. Runs `get_context.py --mode record` to surface active tasks, git status, and recent commits.
+2. Checks `git status --porcelain` and refuses to continue if anything outside `.trellis/` is dirty.
+3. Archives the active task with `task.py archive <name>` (produces a `chore(task): archive ...` commit).
+4. Appends a session entry with `add_session.py --title … --commit …` (produces a `chore: record journal` commit).
+
+The final git log order is always: `<work commits from Phase 3.4>` → `chore(task): archive` → `chore: record journal`.
+
+<Warning>
+  Do not run `/trellis:finish-work` on a dirty working tree. The command checks `git status` and bails out if uncommitted edits exist, redirecting you back to Phase 3.4 to commit first.
+</Warning>
+
+### `/trellis:continue`
+
+Advances the current task to its next workflow step. You do not need to memorize the workflow or remember which phase you are in — `continue` consults `workflow.md` and the task's status breadcrumb and picks up exactly where you left off.
+
+**What it does:** Reads `task.json.status` plus the workflow-state breadcrumb injected each turn, looks up the current phase/step in `workflow.md`, and advances to the next one.
+
+**A typical task conversation with `continue`:**
+<Steps>
+  <Step title="Describe your work">
+    Describe what you want to build in natural language. The AI classifies the request and asks for task-creation consent when Trellis is useful. After you agree, `trellis-brainstorm` creates the task and drafts `prd.md`.
+  </Step>
+  <Step title="Review the plan, then continue">
+    Once `prd.md` looks right, type `continue`. The AI decides whether the task is lightweight or needs `design.md` and `implement.md`.
+  </Step>
+  <Step title="Start implementation">
+    After planning artifacts are reviewed, type `continue`. Implementation and verification begin. In sub-agent mode, `implement.jsonl` and `check.jsonl` are curated; in inline mode the AI reads artifacts and specs directly.
+  </Step>
+  <Step title="Wrap up">
+    When the sub-agents finish, type `continue`. The AI routes to `trellis-update-spec` to capture any learnings, then to `finish-work`.
+  </Step>
+</Steps>
+
+**Platform delivery variants:**
+
+| Platform | Command syntax |
+|----------|---------------|
+| Claude Code, OpenCode, Gemini CLI, CodeBuddy, Droid | `/trellis:continue` |
+| Cursor, Pi Agent, Qoder | `/trellis-continue` |
+| Kiro | `@trellis:continue` |
+| Kilo | `/continue.md` |
+| Antigravity, Devin | Workflow picker → `continue` |
+| GitHub Copilot | Run Prompt → `trellis-continue` |
+
+---
+
+## Auto-Trigger Skills
+
+Skills run without an explicit command; the platform matches based on your intent. You can always trigger a skill manually using your platform's invocation syntax (e.g. `/skill trellis-brainstorm`) if the auto-match misses.
+
+| Skill | Triggers when… | What it does |
+|-------|---------------|--------------|
+| `trellis-brainstorm` | You describe a feature, bug, or ambiguous request | Creates the task, drafts `prd.md`, spawns research as needed |
+| `trellis-before-dev` | A task is `in_progress` and the AI is about to write code | Reads relevant spec files for the affected package(s) |
+| `trellis-check` | Implementation is finished | Diffs changes, runs lint / typecheck / test, self-fixes violations in a bounded loop |
+| `trellis-update-spec` | A learning, decision, or gotcha is worth capturing | Adds a focused entry to the right spec file under `.trellis/spec/` |
+| `trellis-break-loop` | A tricky bug was just resolved | 5-dimension root-cause + prevention analysis |
+
+### `trellis-brainstorm`
+
+Turns an approved planning request into concrete artifacts. It inspects code, tests, configs, docs, existing specs, and task history before asking questions; proposes a task name and slug; creates the task via `task.py create`; and drafts and iterates `prd.md` with requirements and acceptance criteria. For complex tasks it also produces `design.md` and `implement.md` before implementation starts.
+
+### `trellis-before-dev`
+
+Runs before coding starts on a task. Reads the spec index for the affected package(s), then the specific guideline files referenced in the pre-development checklist. Ensures the AI knows the conventions _before_ writing code, not after.
+
+### `trellis-check`
+
+Runs after implementation. Discovers which files changed via `git diff --name-only HEAD`, identifies which spec layers apply, compares the diff against the quality checklist in each layer's index, runs `pnpm lint` / `pnpm typecheck` / `pnpm test` (or equivalent) for affected packages, and self-fixes violations in a bounded loop. The `trellis-check` sub-agent wraps the skill — the main session delegates verification to it; the sub-agent manages its own retry loop internally.
+
+### `trellis-update-spec`
+
+Captures a learning as an executable contract in `.trellis/spec/`. Invoke it after debugging sessions, after hitting a non-obvious gotcha, or after making a design decision worth documenting. It picks the right spec file, adds a focused update, and updates the spec index if needed.
+
+### `trellis-break-loop`
+
+Invoked after resolving a hard bug. Produces a 5-dimension analysis: root-cause classification, why earlier fix attempts failed, prevention mechanisms (spec update, type constraints, lint rule, test), systematic expansion to other places with the same pattern, and knowledge capture via `trellis-update-spec`.
+
+---
+
+## Sub-agents
+
+Sub-agents are isolated AI sub-processes with their own prompt and tool wiring. Implementation and check sub-agents receive spec and research context via per-task JSONL files; research agents write findings into the task's `research/` directory.
+
+| Sub-agent | Restriction | When the main session spawns it |
+|-----------|-------------|--------------------------------|
+| `trellis-research` | Read-only | Codebase search, pattern discovery, doc lookup |
+| `trellis-implement` | Writes code, no `git commit` | Once requirements and plan exist, for the coding phase |
+| `trellis-check` | Writes code (fixes only) | Verification phase; runs self-fix loop internally |
+
+<Note>
+  Sub-agents are available as real isolated processes on Claude Code, Cursor, OpenCode, Codex, Kiro, Gemini CLI, Qoder, CodeBuddy, GitHub Copilot, Droid, and Pi Agent. On Kilo, Antigravity, and Devin, the same work runs inline in the main session. Context is hook- or extension-injected on Claude Code, Cursor, OpenCode, CodeBuddy, Droid, and Pi Agent; other sub-agent platforms use a pull-based prelude.
+</Note>
+
+---
+
+## `task.py` Subcommands
+
+All `task.py` commands run from the repository root. `$TASK_DIR` refers to the full path to a task directory such as `.trellis/tasks/02-27-user-login/`.
+
+| Subcommand | Purpose | Usage |
+|------------|---------|-------|
+| `create` | Create a task (seeds `implement.jsonl` / `check.jsonl` on sub-agent platforms) | `task.py create "title" [--slug name] [-a assignee] [-p priority]` |
+| `start` | Set as the current task for this AI session/window | `task.py start "$TASK_DIR"` |
+| `finish` | Clear the current task for this AI session/window | `task.py finish` |
+| `archive` | Archive a completed task | `task.py archive <name>` |
+| `add-context` | Add a JSONL context entry to `implement.jsonl` or `check.jsonl` | `task.py add-context "$TASK_DIR" <implement\|check> "<path>" "<reason>"` |
+| `validate` | Validate that all JSONL-referenced files exist | `task.py validate "$TASK_DIR"` |
+| `list-context` | View all JSONL entries | `task.py list-context "$TASK_DIR"` |
+| `set-branch` | Set the Git branch name for the task | `task.py set-branch "$TASK_DIR" "feature/xxx"` |
+| `set-base-branch` | Set the PR target branch | `task.py set-base-branch "$TASK_DIR" "main"` |
+| `set-scope` | Set commit scope (e.g. `feat(scope): ...`) | `task.py set-scope "$TASK_DIR" "auth"` |
+| `add-subtask` | Link a child task to a parent | `task.py add-subtask <parent-dir> <child-dir>` |
+| `remove-subtask` | Unlink a child from a parent | `task.py remove-subtask <parent-dir> <child-dir>` |
+| `list` | List active tasks | `task.py list [--mine] [--status <s>]` |
+| `list-archive` | List archived tasks | `task.py list-archive [YYYY-MM]` |
+
+**Example: create a task and add context**
+
+```bash
+# Create the task
+TASK_DIR=$(./.trellis/scripts/task.py create "Add user login" \
+  --slug user-login \
+  --assignee alice \
+  --priority P1)
+
+# Add spec context for the implement sub-agent
+./.trellis/scripts/task.py add-context "$TASK_DIR" implement \
+  ".trellis/spec/backend/index.md" "Backend development guide"
+
+# Add check context
+./.trellis/scripts/task.py add-context "$TASK_DIR" check \
+  ".trellis/spec/cli/unit-test/conventions.md" "Unit test conventions"
+
+# Validate that all referenced files exist
+./.trellis/scripts/task.py validate "$TASK_DIR"
+```
+
+<Note>
+  Put spec files (`.trellis/spec/**/*.md`) and research files (`$TASK_DIR/research/*.md`) in JSONL context. Do **not** add source code paths — the sub-agent reads those during implementation, not from pre-registered context.
+</Note>

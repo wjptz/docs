@@ -1,0 +1,144 @@
+---
+title: "Set Up Suncode Across Your Team"
+sidebarTitle: "Team Setup"
+description: "Join an already-initialized Trellis repo, configure your per-developer identity, run multiple AI tools, and keep shared specs in version control."
+---
+
+When someone on your team has already run `trellis init`, every subsequent team member skips the full initialization flow. Instead, each developer runs `trellis init` on their own machine, and Trellis detects the existing setup and offers a targeted menu. This keeps shared spec files intact while giving each developer their own isolated identity and journal. This page walks through the join flow, per-developer configuration, multi-platform support, and the Git conventions that keep the shared context clean.
+
+## Joining an initialized project
+
+Run `trellis init` inside the repo. If Trellis detects an existing `.trellis/` directory, it presents three options instead of the full setup wizard:
+
+```
+? Trellis is already initialized. What would you like to do?
+❯ Add AI platform(s)
+  Set up developer identity on this device
+  Full re-initialize
+```
+
+| Option | When to pick |
+| --- | --- |
+| **Add AI platform(s)** | You use a different AI tool than the rest of the team — for example, you use Cursor but the team only configured Claude Code |
+| **Set up developer identity on this device** | You are a new team member who just cloned the repo and needs your local identity registered |
+| **Full re-initialize** | The project config is broken and you need a clean slate |
+
+<Warning>
+  Do not pick **Full re-initialize** unless you are deliberately resetting the project. It overwrites
+  existing `.trellis/`, `.claude/`, and other platform config files and affects the whole team once
+  committed.
+</Warning>
+
+## Per-developer identity setup
+
+Select **Set up developer identity on this device**. The CLI prompts for your developer name (it defaults to your Git `user.name`) and then:
+
+- Writes `.trellis/.developer` with your developer name on your local machine
+- Creates `.trellis/workspace/<your-name>/` for your own journals and task history
+
+After identity setup, open a new AI session. On platforms with a SessionStart hook or extension (Claude Code, Cursor, OpenCode, Gemini CLI, Qoder, CodeBuddy, Trae, Droid, Pi Agent), Trellis context injects automatically. On platforms without automatic session injection, run `/trellis:start` or the platform's equivalent start workflow to load context manually.
+
+<Note>
+  `.trellis/.developer` is gitignored — it lives only on your machine. Never commit it. Each
+  developer's name is registered locally; the shared repo never stores individual machine state.
+</Note>
+
+## Multi-platform setup
+
+Different team members can use different AI tools on the same repo. Each developer selects **Add AI platform(s)** from the init menu and passes the platform flag:
+
+```bash
+# Claude Code (default, already configured by whoever ran init first)
+trellis init -u your-name
+
+# Cursor
+trellis init -u your-name --cursor
+
+# Gemini CLI
+trellis init -u your-name --gemini
+
+# OpenCode
+trellis init -u your-name --opencode
+
+# Codex
+trellis init -u your-name --codex
+
+# Kiro
+trellis init -u your-name --kiro
+
+# Trae IDE (added in v0.6.5)
+trellis init -u your-name --trae
+```
+
+Each `--platform` flag writes only the files for that platform's adapter (hooks, agents, skills, commands) under its own directory (`.cursor/`, `.gemini/`, `.trae/`, etc.). The shared `.trellis/` core — specs, tasks, workflow — is untouched.
+
+## Platform capability matrix
+
+Not every AI platform exposes the same hooks and extension points. The table below shows what Trellis can wire automatically on each platform.
+
+| Capability | Claude Code | Cursor | OpenCode | Codex | Kiro | Gemini CLI | Qoder | CodeBuddy | Copilot | Droid | Pi Agent |
+| --- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| SessionStart / startup context | ✅ | ✅ | ✅ | ⚡ | ⚡ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Sub-agent context injection | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ✅ | ✅ |
+| Sub-agents (`trellis-*`) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Auto-trigger skills | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Explicit `/trellis:*` commands | ✅ | ✅ | ✅ | — | — | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+
+**Legend:**
+- ✅ Trellis wires the config and the platform executes it
+- ⚡ Partial — Codex uses `AGENTS.md` plus `UserPromptSubmit`; hooks require `features.hooks = true` and a one-time `/hooks` review on 0.129+. Kiro ships a per-turn `userPromptSubmit` hook on the `trellis` agent, but you must activate that agent first (`chat.defaultAgent trellis` or `/agent swap`)
+- ❌ The platform does not expose this event
+- — The platform has no command primitive; start / finish-work / continue are delivered as skills instead
+
+<Note>
+  Kilo (`--kilo`), Antigravity (`--antigravity`), and Devin (`--devin`) are workflow-and-skill only:
+  no sub-agents and no hooks. Trae (`--trae`) has hooks for main-session startup and per-turn
+  workflow context, but uses pull-based prelude for sub-agent context rather than hook injection.
+  Trellis also writes `.agents/skills/` as a cross-platform shared layer readable by any agent
+  following the agentskills.io standard — including Amp, Cline, Warp, and more.
+</Note>
+
+## Git workflow for specs
+
+Spec files are team assets — version them and review them like code.
+
+**Commit to the repo:**
+- `.trellis/spec/` — coding conventions, checked in and PR-reviewed
+- `.trellis/tasks/` — task PRDs and context files, checked in
+- `.trellis/workflow.md` — the shared workflow definition
+- All platform config directories (`.claude/`, `.cursor/`, `.gemini/`, `.trae/`, etc.)
+
+**Gitignore (per-machine, never commit):**
+- `.trellis/.developer` — developer name for this machine
+- `.trellis/.runtime/` — session runtime state
+- `.trellis/workspace/` — individual developer journals
+
+A minimal `.gitignore` addition looks like this:
+
+```gitignore
+# Trellis per-machine files
+.trellis/.developer
+.trellis/.runtime/
+.trellis/workspace/
+```
+
+When a developer proposes a spec change, open a PR. Treat spec updates with the same scrutiny as API contract changes — a bad spec rule affects every subsequent AI session for every team member.
+
+<Tip>
+  Assign a spec owner or rotate the responsibility during retros. The spec library is most useful
+  when it reflects real, current conventions — not aspirational rules that the codebase hasn't
+  adopted yet.
+</Tip>
+
+## Updating Trellis
+
+Run `trellis update` to pull the latest platform adapters, skills, and hook scripts without touching your hand-edited spec files. Trellis tracks which files you have modified and prompts before overwriting anything you've changed.
+
+```bash
+trellis update           # update to latest
+trellis update --dry-run # preview what would change
+trellis update -s        # skip all locally modified files
+trellis update -f        # overwrite all locally modified files
+```
+
+For major version upgrades that include breaking changes, run `trellis update --migrate` to apply rename and delete manifests rather than having the update exit with instructions.

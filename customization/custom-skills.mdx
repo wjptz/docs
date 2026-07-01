@@ -1,0 +1,161 @@
+---
+title: "Build Custom Auto-Trigger Skills for Trellis Agents"
+sidebarTitle: "Skills"
+description: "Create SKILL.md files that the AI loads automatically when it recognizes a matching intent, extending Trellis without modifying core scripts."
+---
+
+Skills are the primary extension point in Trellis. Most of the shipped workflow — brainstorm, before-dev, check, update-spec, break-loop — is delivered as auto-trigger skills. A skill is a folder containing a `SKILL.md` file. When the AI recognizes that the user's intent matches a skill's description, it loads and follows the skill's instructions automatically, without the user having to type a command.
+
+## Commands, sub-agents, and skills compared
+
+|  | Command | Sub-agent | Skill |
+|---|---|---|---|
+| **Purpose** | Explicit user entry point | Isolated sub-process for a role | Reusable workflow module |
+| **Trigger** | `/trellis:xxx` | Spawned via Task tool | Platform auto-matches on user intent |
+| **Granularity** | Session boundary | Role-level | Capability or phase level |
+| **Cross-platform** | One file per platform | One file per platform | One folder per platform (same structure) |
+
+<Tip>
+  Use a skill when the AI should trigger it automatically based on context. Use a command when the
+  user should decide. Use a sub-agent when the work needs isolation with its own prompt and tool
+  restrictions.
+</Tip>
+
+## Skill file format
+
+A skill is a folder containing `SKILL.md` and an optional `references/` directory for supporting files:
+
+```
+.claude/skills/my-skill/
+├── SKILL.md
+└── references/         # optional supporting files the skill can reference
+```
+
+`SKILL.md` uses YAML frontmatter that the platform matches against user intent:
+
+```markdown
+---
+name: my-skill
+description: |
+  One-line description of when this skill should fire. Platforms match on this
+  text to decide whether to auto-trigger.
+---
+
+# My Skill
+
+Instructions the AI follows when this skill is triggered.
+
+## Steps
+
+1. Read the relevant files.
+2. Apply the logic.
+3. Report the result in this format: ...
+```
+
+## Where to place skill files
+
+Skills ship on all 14 configured Trellis platforms. The folder structure is identical everywhere — only the root path changes.
+
+| Platform | Location |
+|---|---|
+| Claude Code | `.claude/skills/{name}/SKILL.md` |
+| Cursor | `.cursor/skills/{name}/SKILL.md` |
+| OpenCode | `.opencode/skills/{name}/SKILL.md` |
+| Codex | `.codex/skills/{name}/SKILL.md` |
+| Kiro | `.kiro/skills/{name}/SKILL.md` |
+| Gemini CLI | `.gemini/skills/{name}/SKILL.md` |
+| Qoder | `.qoder/skills/{name}/SKILL.md` |
+| CodeBuddy | `.codebuddy/skills/{name}/SKILL.md` |
+| Copilot | `.github/skills/{name}/SKILL.md` |
+| Droid | `.factory/skills/{name}/SKILL.md` |
+| Pi Agent | `.pi/skills/{name}/SKILL.md` |
+| Kilo | `.kilocode/skills/{name}/SKILL.md` |
+| Antigravity | `.agent/skills/{name}/SKILL.md` |
+| Devin | `.devin/skills/{name}/SKILL.md` |
+
+### Cross-platform skills
+
+`.agents/skills/{name}/SKILL.md` is the [agentskills.io](https://agentskills.io) cross-platform shared layer. The Codex configurator writes a copy there automatically. Skills placed in `.agents/skills/` are directly usable by Amp, Cline, Deep Agents, Firebender, Kimi Code CLI, Warp, and other agents that read the standard — without any per-platform configuration.
+
+## Writing a skill that triggers reliably
+
+The `description` field is what platforms match against. Write it as a description of the **condition that should cause this skill to fire**, not a description of the skill's identity.
+
+```yaml
+# Good: describes the trigger condition
+description: |
+  Use when the user reports a bug that was just fixed and wants to understand
+  the root cause and prevent recurrence. Runs a 5-dimension analysis.
+
+# Bad: describes the skill's name
+description: |
+  The break-loop skill analyzes bugs.
+```
+
+The skill body should:
+
+1. State the trigger condition again in the skill's own voice so the AI can confirm the match was correct.
+2. Tell the AI exactly which files to read before acting.
+3. Give a fixed output format so results are consistent across invocations.
+
+## Example: an `api-doc` skill
+
+Create `.claude/skills/api-doc/SKILL.md`:
+
+````markdown
+---
+name: api-doc
+description: |
+  Use when the user has just added or modified backend API endpoints and wants
+  the OpenAPI doc updated. Parses the diff, extracts endpoint signatures, and
+  writes the doc.
+---
+
+# api-doc
+
+You auto-generate API documentation from the current diff.
+
+## Trigger check
+
+Before running, verify that the diff contains changes under `src/api/` or
+`src/routes/`. If not, ask the user to confirm before proceeding.
+
+## Steps
+
+1. Run `git diff --name-only HEAD` and list changed files.
+2. For each changed endpoint file, extract the route, HTTP method, request
+   schema, and response schema.
+3. Update `docs/openapi.yaml` with the new or modified endpoints.
+4. Report which endpoints were added, modified, or removed.
+
+## Output format
+
+```
+Added endpoints:
+  POST /api/foo
+Modified endpoints:
+  PUT /api/bar (request body changed)
+Removed endpoints:
+  (none)
+```
+````
+
+Place parallel copies of the same `SKILL.md` in each platform-specific location from the table above. The content is identical; only the path changes.
+
+## Testing and triggering skills manually
+
+To test a skill without waiting for the AI to auto-trigger it, describe the trigger condition explicitly in your message. For example, for the `api-doc` skill above, you can say:
+
+> "I just added a new POST endpoint to `src/api/users.ts`. Update the OpenAPI doc."
+
+If the skill is correctly placed and its `description` matches, the AI loads it and follows its steps. If the AI does not pick it up automatically, you can also reference the skill by name directly in your message or expose a matching slash command that manually triggers it — see [Custom Commands](/customization/custom-commands).
+
+## Updating the skill routing table
+
+After adding a custom skill, register it in `workflow.md` so the AI knows when to use it. Add a row to the `### Skill Routing` table:
+
+```markdown
+| User wants a test plan before writing code | trellis-test-plan |
+```
+
+No code change needed. On the next session start, the AI reads the updated table and routes correctly. See [Customize the Workflow](/customization/custom-workflow) for details.

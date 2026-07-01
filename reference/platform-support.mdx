@@ -1,0 +1,127 @@
+---
+title: "Platform Support: Suncode on Every AI Coding Tool"
+sidebarTitle: "Platforms"
+description: "Suncode supports 16+ AI coding platforms — Claude Code, Cursor, Codex, Kiro, and more — plus the shared .agents/skills/ layer for any agent."
+---
+
+Suncode (Trellis) runs on 17 explicitly configured AI coding platforms — Claude Code, Cursor, OpenCode, Codex, Kiro, Gemini CLI, Qoder, CodeBuddy, GitHub Copilot, Droid, Pi Agent, Kilo, Antigravity, Devin, Reasonix, ZCode, and Trae IDE (added in v0.6.5) — and additionally supports any AI coding agent that follows the `.agents/skills/` standard (the [agentskills.io](https://agentskills.io) convention used by Amp, Cline, Deep Agents, Firebender, Kimi Code CLI, Warp, and more). The `.trellis/` core directory is identical everywhere; what differs is how hooks, extensions, skills, sub-agents, and commands are delivered on each platform.
+
+---
+
+## Platform Configuration Directories
+
+Each platform writes into its own directory tree alongside the shared `.trellis/` core. Use the table below to find the configuration paths for your platform.
+
+| Platform | Primary config dir | Commands / Prompts | Skills | Sub-agents | Hooks |
+|----------|-------------------|-------------------|--------|------------|-------|
+| **Claude Code** | `.claude/` | `.claude/commands/trellis/` | `.claude/skills/` | `.claude/agents/` | `.claude/hooks/` |
+| **Cursor** | `.cursor/` | `.cursor/commands/` | `.cursor/skills/` | `.cursor/agents/` | `.cursor/hooks/` + `.cursor/hooks.json` |
+| **OpenCode** | `.opencode/` | `.opencode/commands/trellis/` | `.opencode/skills/` | `.opencode/agents/` | `.opencode/plugins/` (JS plugins) |
+| **Codex** | `.codex/` | `.codex/prompts/` | `.codex/skills/` | `.codex/agents/` (TOML) | `.codex/hooks/` |
+| **Kiro** | `.kiro/` | `.kiro/prompts/` | `.kiro/skills/` | `.kiro/agents/` | `.kiro/hooks/` + `.kiro/hooks/*.kiro.hook` |
+| **Gemini CLI** | `.gemini/` | `.gemini/commands/trellis/` (TOML) | `.gemini/skills/` | `.gemini/agents/` | `.gemini/hooks/` + `.gemini/settings.json` |
+| **Qoder** | `.qoder/` | `.qoder/commands/` | `.qoder/skills/` | `.qoder/agents/` | `.qoder/hooks/` + `.qoder/settings.json` |
+| **CodeBuddy** | `.codebuddy/` | `.codebuddy/commands/trellis/` | `.codebuddy/skills/` | `.codebuddy/agents/` | `.codebuddy/hooks/` + `.codebuddy/settings.json` |
+| **GitHub Copilot** | `.github/` | `.github/prompts/` | `.github/skills/` | `.github/agents/` | `.github/copilot/hooks/` |
+| **Droid (Factory)** | `.factory/` | `.factory/commands/trellis/` | `.factory/skills/` | `.factory/droids/` | `.factory/hooks/` |
+| **Pi Agent** | `.pi/` | `.pi/prompts/` | `.pi/skills/` | `.pi/agents/` | `.pi/extensions/trellis/` + `.pi/settings.json` |
+| **Kilo** | `.kilocode/` | `.kilocode/workflows/` | `.kilocode/skills/` | — | — |
+| **Antigravity** | `.agent/` | `.agent/workflows/` | `.agent/skills/` | — | — |
+| **Devin** | `.devin/` | `.devin/workflows/` | `.devin/skills/` | — | — |
+| **Reasonix** | `.reasonix/` | built-in slash commands | `.reasonix/skills/` | — | — |
+| **ZCode** | `.zcode/` | `.zcode/commands/trellis/` | `.agents/skills/` (shared) | `.zcode/cli/agents/` | — |
+| **Trae IDE** | `.trae/` | `.trae/commands/` | `.trae/skills/` | `.trae/agents/` | `.trae/hooks/` + `.trae/hooks.json` |
+| **Shared layer** | `.agents/skills/` | — | `.agents/skills/` | — | — |
+
+---
+
+## Capability Matrix
+
+Not every platform supports the full Trellis capability surface. The table below shows what Trellis wires on each platform.
+
+| Capability | Claude Code | Cursor | OpenCode | Codex | Kiro | Gemini CLI | Qoder | CodeBuddy | Copilot | Droid | Pi Agent |
+|------------|:-----------:|:------:|:--------:|:-----:|:----:|:----------:|:-----:|:---------:|:-------:|:-----:|:--------:|
+| **SessionStart / startup context** | ✅ | ✅ | ✅ | ⚡ | ⚡ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **UserPromptSubmit (workflow breadcrumb)** | ✅ | ✅ | ✅ | ⚡ | ✅ | — | — | ✅ | — | ✅ | ✅ |
+| **PreToolUse / sub-agent context inject** | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ✅ | ✅ |
+| **Sub-agents (`trellis-*`)** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Auto-trigger skills** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Explicit `/trellis:*` commands** | ✅ | ✅ | ✅ | — | — | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+
+**Legend:**
+- ✅ Trellis wires the config and the platform executes it
+- ⚡ Partial support — see notes below
+- ❌ Platform does not expose this event
+- — Platform has no native primitive for this capability
+
+<Note>
+  **Codex (⚡):** Uses `AGENTS.md` as a prelude (auto-read every session) plus an optional `UserPromptSubmit` hook for workflow breadcrumbs. Hooks require `features.hooks = true` in `~/.codex/config.toml` (Codex 0.129+, previously `codex_hooks = true`). On 0.129+ you also must run `/hooks` once in Codex and approve the Trellis `UserPromptSubmit` hook. Without hooks Codex falls back to prelude-only.
+
+  **Kiro (⚡):** Ships a per-turn `userPromptSubmit` hook on the `trellis` agent, but you must activate that agent — run `kiro-cli settings chat.defaultAgent trellis` (persists) or `/agent swap trellis` (per session). Kiro otherwise runs the built-in `kiro_default` agent. Session startup uses an `agentSpawn` hook.
+</Note>
+
+### Workflow-only platforms (Kilo, Antigravity, Devin)
+
+Kilo (`.kilocode/`), Antigravity (`.agent/`), and Devin (`.devin/`) receive workflow files and skills only. They have no hook integration and no sub-agent primitives; the full workflow runs inline in the main session. These platforms load specs via the `trellis-before-dev` skill in Phase 2.1 instead of JSONL injection.
+
+### Trae IDE
+
+Trae IDE (added in v0.6.5) is a class-2 platform: it has hooks for main-session startup and per-turn workflow context, and it supports sub-agents, but sub-agent context loading uses the pull-based prelude because Trae does not expose a Trellis-supported sub-agent prompt mutation surface.
+
+```bash
+trellis init --trae
+```
+
+---
+
+## The `.agents/skills/` Shared Layer
+
+Every Trellis project includes a `.agents/skills/` directory that follows the [agentskills.io](https://agentskills.io) open standard. This directory is written by Codex and ZCode configurators and is directly usable by any AI coding agent that reads the standard, including Amp, Cline, Deep Agents, Firebender, Kimi Code CLI, and Warp.
+
+If you use one of these agents alongside a configured Trellis platform, the `.agents/skills/` files are already present after `trellis init`. On platforms not explicitly configured by Trellis, manage the framework through the `.trellis/` core plus whatever prelude file your agent reads; the skills layer is immediately available.
+
+---
+
+## Startup Behavior by Platform Group
+
+| Platform group | Startup behavior |
+|---------------|-----------------|
+| **Hook-based** (Claude Code, Cursor, OpenCode, Gemini CLI, CodeBuddy, Droid) | `session-start.py` fires on `SessionStart`; automatically injects identity, git status, and active task context before the first message |
+| **Extension-based** (Pi Agent) | The `.pi/extensions/trellis/` extension fires on `before_agent_start`, injecting workflow state, session overview, active-task status, compact workflow index, and first-reply notice into `systemPrompt` |
+| **Prelude-based** (Codex without hooks, ZCode, Reasonix, Trae) | `AGENTS.md` or the platform's equivalent prelude file is auto-read every session; workflow breadcrumbs require the optional `UserPromptSubmit` hook where available |
+| **Agent-swap required** (Kiro) | Per-turn context only fires when the `trellis` agent is active. Activate it with `chat.defaultAgent trellis` or `/agent swap trellis` |
+| **Workflow-only** (Kilo, Antigravity, Devin) | No automatic context injection. Start the session by selecting the `start` workflow from the platform's workflow picker |
+| **Manual start** (any platform without a hook) | Run `/trellis:start` (or your platform's equivalent) at the start of each session |
+
+---
+
+## Operating System Support
+
+| OS | Status | Notes |
+|----|--------|-------|
+| **macOS** | ✅ Full | Primary development platform |
+| **Linux** | ✅ Full | Verified |
+| **Windows** | ✅ Full | Scripts are Python 3.9+; Claude Code sets `CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR=1` so hook `cwd` resolves correctly |
+
+Python 3.9+ is required for `.trellis/scripts/` and all Python hook files. OpenCode plugins use Node.js 18+.
+
+---
+
+## Multi-Developer Teams
+
+Trellis is designed for team use with per-developer isolation where it matters.
+
+**Per-developer (no conflicts):**
+- `.trellis/workspace/{name}/` — each developer's own journals and index
+- `.trellis/.developer` — gitignored, per-machine identity
+- `.trellis/.runtime/` — gitignored session runtime; each AI window has its own active-task file
+
+**Shared (coordinate via PR):**
+- `.trellis/spec/` — team conventions, reviewed like any code change
+- `.trellis/tasks/` — task JSONs with `--assignee` to avoid collisions
+
+To join an already-initialized project, run `trellis init` and select **Set up developer identity on this device**. The CLI writes your `.trellis/.developer` file and creates your personal workspace directory.
+
+<Warning>
+  Do not select **Full re-initialize** when joining an existing project. That option overwrites the shared `.trellis/`, `.claude/`, and other platform configuration directories and affects the entire team.
+</Warning>

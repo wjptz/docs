@@ -1,0 +1,99 @@
+{
+  "projectType": "cli-tool",
+  "projectName": "Suncode (Trellis)",
+  "projectDescription": "Suncode is a repo-native AI workflow framework that injects project specs and enforces coding conventions across all major AI coding assistants.",
+  "theme": "luma",
+  "primaryColor": "#54545c",
+  "lightColor": null,
+  "darkColor": null,
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "how-it-works"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/specs",
+              "concepts/tasks",
+              "concepts/skills",
+              "concepts/workspace"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/real-world-scenarios",
+              "guides/team-setup",
+              "guides/spec-templates",
+              "guides/ai-tools"
+            ]
+          },
+          {
+            "group": "Customization",
+            "pages": [
+              "customization/custom-workflow",
+              "customization/custom-commands",
+              "customization/custom-skills",
+              "customization/custom-agents",
+              "customization/configuration"
+            ]
+          },
+          {
+            "group": "Reference",
+            "pages": [
+              "reference/commands",
+              "reference/platform-support",
+              "reference/marketplace",
+              "reference/changelog"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Auto-injection of project specs into every AI coding session",
+    "Three-phase workflow: Plan → Execute → Finish",
+    "Cross-platform support for 16+ AI coding tools (Claude Code, Cursor, Codex, Kiro, Gemini CLI, etc.)",
+    "Git-versioned spec library shared across the whole team",
+    "Cross-session workspace memory via developer journals",
+    "Auto-trigger skills for brainstorm, check, spec-update, and loop-break",
+    "Custom spec templates via marketplace or private registry",
+    "Task lifecycle management with PRD, design, and implementation artifacts",
+    "Sub-agent roles for research, implementation, and verification",
+    "Modular configuration via .trellis/config.yaml"
+  ],
+  "publicApiSurface": [
+    "trellis init",
+    "trellis init -u <name> --claude --cursor --codex ...",
+    "trellis init --template <id>",
+    "trellis init --registry <provider:repo/path>",
+    "trellis upgrade",
+    "trellis update",
+    "/trellis:start",
+    "/trellis:finish-work",
+    "/trellis:continue",
+    "task.py create",
+    "task.py start",
+    "task.py archive",
+    "get_context.py",
+    "add_session.py",
+    "trellis-brainstorm skill",
+    "trellis-before-dev skill",
+    "trellis-check skill",
+    "trellis-update-spec skill",
+    "trellis-break-loop skill",
+    "trellis-implement sub-agent",
+    "trellis-research sub-agent",
+    "npx skills add mindfold-ai/marketplace"
+  ]
+}

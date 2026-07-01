@@ -1,0 +1,241 @@
+---
+title: "Spec Templates: Coding Convention Starter Kits"
+sidebarTitle: "Spec Templates"
+description: "Bootstrap your .trellis/spec/ directory with battle-tested coding conventions for popular full-stack tech stacks, or publish your own custom registry."
+---
+
+Spec templates give you a head start on the conventions your AI sessions will use on every task. Instead of filling blank spec files from scratch, you start with a curated set of rules for your tech stack — component patterns, API shapes, database conventions, error handling, and common pitfalls — then tailor them to match your actual codebase. Trellis ships three official templates and supports any Git repository as a custom registry, so teams can publish and share their own convention libraries.
+
+<Note>
+  Specs are meant to be customized. Every template is a starting point, not a final answer. Always
+  replace examples with real file paths from your project and remove rules that do not reflect how
+  your team actually works.
+</Note>
+
+## Available official templates
+
+| Template | Stack | Files | Description |
+| --- | --- | --- | --- |
+| [Electron + React + TypeScript](#electron--react--typescript) | Full-stack desktop | 50 files | Electron desktop app with React frontend and SQLite |
+| [Next.js + oRPC + PostgreSQL](#nextjs--orpc--postgresql) | Full-stack web | 35 files | Next.js App Router with oRPC API layer and Drizzle ORM |
+| [CF Workers + Hono + Turso](#cloudflare-workers--hono--turso) | Full-stack edge | 38 files | Cloudflare Workers API with Hono framework and Turso edge DB |
+
+<CardGroup cols={3}>
+  <Card
+    title="Electron + React + TS"
+    icon="download"
+    href="https://download-directory.github.io/?url=https://github.com/mindfold-ai/Trellis/tree/main/marketplace/specs/electron-fullstack"
+  >
+    Download ZIP — 50 spec files
+  </Card>
+  <Card
+    title="Next.js + oRPC + PostgreSQL"
+    icon="download"
+    href="https://download-directory.github.io/?url=https://github.com/mindfold-ai/Trellis/tree/main/marketplace/specs/nextjs-fullstack"
+  >
+    Download ZIP — 35 spec files
+  </Card>
+  <Card
+    title="CF Workers + Hono + Turso"
+    icon="download"
+    href="https://download-directory.github.io/?url=https://github.com/mindfold-ai/Trellis/tree/main/marketplace/specs/cf-workers-fullstack"
+  >
+    Download ZIP — 38 spec files
+  </Card>
+</CardGroup>
+
+### Electron + React + TypeScript
+
+A complete convention set for Electron desktop applications with a React frontend, Zustand state management, and SQLite.
+
+<Accordion title="What's included">
+
+| Category | Files | Coverage |
+| --- | --- | --- |
+| Frontend | 11 files | Components, hooks, state management, IPC communication, CSS |
+| Backend | 14 files | API module structure, SQLite patterns, error handling, logging, macOS permissions |
+| Guides | 8 files | Cross-layer thinking, bug root-cause analysis, database schema migrations |
+| Shared | 6 files | TypeScript conventions, git workflow, code quality |
+
+Key topics covered:
+- React component patterns and hook conventions
+- Electron IPC communication patterns (main ↔ renderer)
+- Zustand store structure and selector rules
+- SQLite batch-write patterns and N+1 prevention
+- macOS permission handling
+
+</Accordion>
+
+### Next.js + oRPC + PostgreSQL
+
+A production-grade convention set for Next.js 15 App Router applications using oRPC as the API layer and Drizzle ORM with PostgreSQL.
+
+<Accordion title="What's included">
+
+| Category | Files | Coverage |
+| --- | --- | --- |
+| Frontend | 12 files | Components, hooks, state, oRPC client, AI SDK, CSS design system |
+| Backend | 10 files | oRPC router + procedures + middleware, Drizzle ORM, auth, performance, logging |
+| Guides | 3 files | Pre-implementation checklist, cross-layer thinking |
+| Shared | 4 files | TypeScript, code quality, dependency conventions |
+| Pitfalls | 5 files | PostgreSQL JSON/JSONB, Sentry + next-intl conflict, Turbopack vs Webpack, WebKit mobile CSS |
+
+Key topics covered:
+- Server Components vs Client Components decision rules
+- oRPC procedure and middleware patterns
+- Drizzle ORM transactions, N+1 prevention, JSON/JSONB handling
+- better-auth server configuration
+- Vercel AI SDK (`useChat`, tool calls, streaming)
+- TailwindCSS 4 + Radix UI patterns
+
+</Accordion>
+
+### Cloudflare Workers + Hono + Turso
+
+A complete convention set for Cloudflare Workers applications using Hono as the HTTP framework, Drizzle ORM, and Turso (libSQL) as the edge database.
+
+<Accordion title="What's included">
+
+| Category | Files | Coverage |
+| --- | --- | --- |
+| Backend | 11 files | Hono patterns, Drizzle + Turso, API module structure, security, storage |
+| Frontend | 7 files + examples | Components, hooks, auth, design templates (hero, dashboard, animations) |
+| Shared | 5 files | TypeScript, code quality, dependency versions, timestamp conventions |
+| Guides | 3 files | OAuth 2.1 consent flow, serverless connection debugging |
+| Pitfalls | 6 files | Workers Node.js compat, cross-layer contracts, env config, CSS debugging |
+
+Key topics covered:
+- Hono type-safe bindings, middleware, WebSocket patterns
+- Drizzle + Turso batch operations and Workers-specific pitfalls
+- Cloudflare R2, KV, and Cache API for session caching
+- Timing-safe comparison and OAuth redirect validation
+- Better Auth UI v3.x with SSR-safe Cloudflare Workers considerations
+- Build-time vs runtime environment variable handling
+
+</Accordion>
+
+---
+
+## How to use a template during init
+
+Pass the `--template` flag to `trellis init` to pull a template directly from the official marketplace:
+
+```bash
+trellis init --template electron-fullstack
+trellis init --template nextjs-fullstack
+trellis init --template cf-workers-fullstack
+```
+
+Combine with platform and username flags to set everything up in one command:
+
+```bash
+trellis init --template nextjs-fullstack --cursor -u your-name
+```
+
+## Custom registries
+
+Available since **v0.3.6**. Use the `--registry` flag to pull templates from any Git repository — your company's internal library, a team fork of the official marketplace, or a community collection.
+
+```bash
+# GitHub (public)
+trellis init --registry https://github.com/your-org/your-spec-templates
+
+# GitLab
+trellis init --registry https://gitlab.com/your-org/your-spec-templates
+
+# Bitbucket
+trellis init --registry https://bitbucket.org/your-org/your-spec-templates
+
+# Combine with platform flags
+trellis init --registry https://github.com/your-org/your-spec-templates --cursor -u your-name
+```
+
+Trellis auto-detects two modes when reading a registry:
+
+- **Marketplace mode** — if the repository contains a `marketplace/index.json` file, Trellis reads the template index and lets you pick which template to install
+- **Direct download mode** — if no `index.json` is found, Trellis treats the entire `marketplace/specs/` directory as a single template and downloads it directly
+
+### Handling existing specs
+
+If your project already has specs in `.trellis/spec/`, control how the template merges:
+
+```bash
+# Overwrite all existing spec files with template files
+trellis init --template nextjs-fullstack --overwrite
+
+# Append template files without touching existing files
+trellis init --template nextjs-fullstack --append
+```
+
+Use `--append` when you want to add a new stack's conventions alongside ones you have already customized.
+
+---
+
+## Building a custom spec marketplace
+
+To create a registry others can use with `--registry`, structure your repository like this:
+
+```
+your-spec-registry/
+└── marketplace/
+    ├── index.json
+    └── specs/
+        ├── my-stack/
+        │   ├── frontend/
+        │   │   ├── index.md
+        │   │   └── components.md
+        │   ├── backend/
+        │   │   ├── index.md
+        │   │   └── api-patterns.md
+        │   ├── guides/
+        │   │   └── cross-layer-thinking-guide.md
+        │   └── README.md
+        └── another-stack/
+            └── ...
+```
+
+The `marketplace/index.json` file lists all available templates:
+
+```json
+{
+  "version": 1,
+  "templates": [
+    {
+      "id": "my-stack",
+      "type": "spec",
+      "name": "My Stack Template",
+      "description": "Conventions for our internal tech stack",
+      "path": "marketplace/specs/my-stack",
+      "tags": ["react", "node", "typescript"]
+    },
+    {
+      "id": "another-stack",
+      "type": "spec",
+      "name": "Another Stack Template",
+      "description": "Edge-first API conventions",
+      "path": "marketplace/specs/another-stack",
+      "tags": ["hono", "cloudflare", "drizzle"]
+    }
+  ]
+}
+```
+
+Each `path` points to a directory inside the repo that follows the standard spec structure (`frontend/`, `backend/`, `guides/`, `shared/`, `README.md`). Share the repository URL and teammates install it with `trellis init --registry <url>`.
+
+## Private registries
+
+For private Git repositories, set the `GIGET_AUTH` environment variable to a personal access token before running `trellis init`:
+
+```bash
+# GitHub personal access token
+GIGET_AUTH=ghp_yourtoken trellis init --registry https://github.com/your-org/private-specs
+
+# GitLab personal access token
+GIGET_AUTH=glpat-yourtoken trellis init --registry https://gitlab.com/your-org/private-specs
+```
+
+<Tip>
+  You don't have to fill every spec file at once. Start with the two or three areas that cause the
+  most repeated AI prompting — API patterns, error handling, or component structure — and expand
+  over time. The bootstrap task created by `trellis init` guides you through the initial fill.
+</Tip>

@@ -1,0 +1,144 @@
+---
+title: "Workspace Memory: Persistent Context Across AI Sessions"
+sidebarTitle: "Workspace"
+description: "Workspace memory records what you built in each session so the AI greets you next time with a summary of where you left off, not a blank slate."
+---
+
+Every AI coding session starts fresh. The agent has no memory of the bug you spent three hours tracking down yesterday, the design decision you made last week, or the half-finished feature you are returning to after the weekend. You spend the first minutes of every session re-explaining context the agent has already seen — and sometimes it still drifts because it is missing the thread of how the work evolved.
+
+Trellis workspace memory solves this by writing a journal entry at the end of every session and reading recent journal entries at the start of the next one. The agent begins each session knowing what you worked on, what decisions were made, and what comes next — without needing a transcript of the previous conversation.
+
+## Developer Identity
+
+Trellis tracks your identity in `.trellis/.developer`. This file stores your developer name and is written during `trellis init`. Every journal entry is stamped with your name, so in a shared repository, each developer's memory is stored and read separately.
+
+```text
+.trellis/.developer    # Contains your developer name (e.g. "alice")
+```
+
+At session start, the agent reads `.trellis/.developer` to determine whose workspace memory to load. When multiple developers work in the same repo, their journals remain isolated — the agent does not cross-read another developer's session history.
+
+## Journal Files
+
+Your journal lives in a directory named after you under `.trellis/workspace/`:
+
+```text
+.trellis/workspace/<your-name>/
+├── index.md          # Summary index of all journal entries
+├── journal-1.md      # First journal file
+├── journal-2.md      # Overflow when journal-1.md reaches max_journal_lines
+└── journal-N.md      # Current journal file
+```
+
+Each journal file grows one entry per session. When a journal file reaches the configured `max_journal_lines` limit, Trellis creates the next numbered file (`journal-2.md`, `journal-3.md`, and so on) and continues appending there. The index file is updated to reflect all journal files and their date ranges, so the agent can load the right file without scanning everything.
+
+### What a Journal Entry Records
+
+`/trellis:finish-work` writes a structured journal entry at the end of each session. A typical entry includes:
+
+- The task title and ID that was worked on
+- A summary of what was implemented or changed
+- Key decisions made and the reasons behind them
+- Any blockers encountered and how they were resolved
+- What the next step is when the work resumes
+- The git commit hash for the work done in this session
+
+```markdown
+## 2025-05-14 — Add user login (05-14-user-login)
+
+Implemented JWT authentication flow. Created middleware in `src/auth/jwt.ts`
+and wired it into the Express router. Chose `jose` over `jsonwebtoken` after
+research confirmed better ESM support (see research/auth-library-comparison.md).
+
+**Decisions**: Refresh tokens stored in httpOnly cookies, not localStorage.
+See `design.md` for the full threat model rationale.
+
+**Next**: Implement the `/logout` endpoint and add integration tests for
+the token expiry path.
+
+**Commit**: `a3f92d1`
+```
+
+## Setting Up Your Workspace
+
+Run `trellis init` with the `-u` flag to set your developer name when you initialize a project:
+
+```bash
+trellis init -u your-name
+```
+
+If the project is already initialized, update your identity by editing `.trellis/.developer` directly:
+
+```bash
+echo "your-name" > .trellis/.developer
+```
+
+<Note>
+  Your developer name is used as the directory name under `.trellis/workspace/`. Use a consistent name across machines and projects so your journal history remains findable.
+</Note>
+
+## How the AI Uses Journals at Session Start
+
+On hook-capable platforms, the session-start hook loads workspace memory and includes it in the startup payload. The agent receives:
+
+1. Your developer name from `.trellis/.developer`
+2. The workspace index from `.trellis/workspace/<your-name>/index.md`
+3. Recent journal entries from the current journal file
+
+The agent reads recent entries and uses them to greet you with a summary of what was done last session and what is next. It does not need to ask you "what were we working on?" — the journal tells it.
+
+On platforms without a session-start hook (Kilo, Antigravity, Devin), the main session reads workspace memory explicitly when you run `/trellis:start`.
+
+## Cross-Session Memory in Practice
+
+Here is what an AI greeting looks like when workspace memory is present:
+
+<Accordion title="Example session opening with workspace memory">
+```
+Welcome back, alice.
+
+Last session (2025-05-14): You finished the JWT middleware for the user login
+task. The `jose` library is wired in, refresh tokens go to httpOnly cookies,
+and the `/login` endpoint is tested.
+
+Active task: 05-14-user-login (in_progress)
+
+Next step: Implement the `/logout` endpoint and add integration tests for the
+token expiry path (from your last journal entry).
+
+Current branch: feature/user-login
+Dirty files: none
+
+What would you like to work on?
+```
+</Accordion>
+
+Without workspace memory, the agent would open a blank session and ask you to explain the context from scratch. With workspace memory, it reconstructs the thread immediately and is ready to continue.
+
+## Configuring Journal Growth
+
+You can control how large each journal file grows before Trellis rolls over to a new one. Set `max_journal_lines` in `.trellis/config.yaml`:
+
+```yaml
+workspace:
+  max_journal_lines: 1000
+```
+
+Smaller values create more journal files, each covering a shorter time span. Larger values keep more history in fewer files. The default is 1000 lines. The index file always covers all journal files, so the agent can load the right slice of history regardless of how many files exist.
+
+<Tip>
+  Keep `max_journal_lines` at or below a few thousand lines. Very large journal files slow down the startup context load, since the agent reads recent entries on every session start.
+</Tip>
+
+## What Survives in the Workspace
+
+The workspace captures developer-level session memory. Team-level knowledge is stored separately:
+
+| Stored in | What survives |
+| --- | --- |
+| `.trellis/workspace/<developer>/` | Session summaries, decisions, next steps — personal session continuity |
+| `.trellis/spec/` | Stable team conventions promoted from task learnings — shared across all developers |
+| `.trellis/tasks/<task>/` | Task-specific research, planning artifacts, and metadata — shared but scoped to one task |
+| Git commits | Reviewable code, spec, archive, and journal changes — the authoritative source of record |
+
+Session notes belong in `.trellis/workspace/<developer>/`. Stable team rules belong in `.trellis/spec/`. Task-specific facts belong in the task directory. Keeping these three stores separate ensures that personal context does not pollute shared conventions, and shared conventions do not grow stale with task-local noise.

@@ -1,0 +1,157 @@
+---
+title: "Skills Marketplace: Extending Suncode's Capabilities"
+sidebarTitle: "Marketplace"
+description: "Install official and community marketplace skills to extend Suncode with memory recall, frontend optimization, Trellis customization, and more."
+---
+
+Suncode's Skills Marketplace lets you extend your AI coding workflow with purpose-built skills beyond the five that ship with every Trellis install. Official skills cover cross-platform conversation memory, frontend performance diagnostics, and deep Trellis customization. Community skills are coming. All marketplace skills install through the [skills.sh](https://skills.sh) toolchain with a single `npx` command, and Trellis keeps them tracked alongside your project's built-in skills.
+
+---
+
+## Official Skills
+
+| Skill | Description | Install |
+|-------|-------------|---------|
+| [trellis-meta](#trellis-meta) | Customize and modify Trellis — add agents, change context injection, add commands | Built in via `trellis init`; marketplace install for compatibility |
+| [trellis-spec-bootstrap](#trellis-spec-bootstrap) | Bootstrap project-specific Trellis specs from your real codebase | Bundled with Trellis via `trellis init` / `trellis update` |
+| [frontend-fullchain-optimization](#frontend-fullchain-optimization) | Diagnose and optimize frontend performance with Web Vitals | `npx skills add mindfold-ai/marketplace -s frontend-fullchain-optimization` |
+| [mem-recall](#mem-recall) | Recall past AI conversations across Claude Code, Codex, OpenCode, and Pi via `trellis mem` | `npx skills add mindfold-ai/marketplace -s mem-recall` |
+
+---
+
+## Installing Marketplace Skills
+
+Install all available marketplace skills at once, or pick a specific skill by name.
+
+```bash
+# Install all official marketplace skills
+npx skills add mindfold-ai/marketplace
+
+# Install a specific skill only
+npx skills add mindfold-ai/marketplace -s frontend-fullchain-optimization
+
+# Install mem-recall only
+npx skills add mindfold-ai/marketplace -s mem-recall
+```
+
+Common flags for both commands:
+
+| Flag | Description |
+|------|-------------|
+| `-s <skill-name>` | Install a single named skill |
+| `-g` | Install globally to `~/.claude/skills/` instead of the project |
+| `-a <agent>` | Target a specific agent (e.g. `-a claude-code`) |
+| `-y` | Non-interactive mode, accept all defaults |
+
+After installation, ask the AI which skills are available — it should list the newly installed skill by name.
+
+---
+
+## trellis-meta
+
+`trellis-meta` is the official meta-skill for understanding and customizing Trellis. Every Trellis project initialized with `trellis init` already includes it in the selected platform's skill directory. Use it whenever you want to adapt Trellis to fit your project's specific workflow.
+
+**What the AI can do with trellis-meta:**
+- Add specialized agents for your workflow (e.g. a deploy agent for your deployment pipeline)
+- Change how context gets injected into sessions and sub-agents
+- Add project-specific commands and prompts
+- Adapt `.trellis/` and platform files to your conventions
+- Modify an existing workflow phase or add a new one
+
+**Installation for Trellis-managed projects:** `trellis-meta` is already present if you initialized Trellis. Keep it up to date with:
+
+```bash
+trellis update
+```
+
+For non-Trellis projects or older installs that predate the bundled version:
+
+```bash
+npx skills add mindfold-ai/marketplace --skill trellis-meta
+```
+
+**What's included in the skill:**
+
+| Directory | Contents |
+|-----------|----------|
+| `local-architecture/` | How `.trellis/` workflow, tasks, specs, workspace, scripts, and context injection fit together |
+| `platform-files/` | How platform settings, hooks, agents, skills, commands, prompts, and workflows connect to Trellis |
+| `customize-local/` | How to modify generated local files for workflow, task lifecycle, context loading, hooks, agents, skills, commands, and specs |
+
+**Works with:** Claude Code, Cursor, OpenCode, Codex, Kilo, Kiro, Gemini CLI, Antigravity, Devin, Qoder, CodeBuddy, GitHub Copilot, Droid, and Pi Agent.
+
+---
+
+## trellis-spec-bootstrap
+
+`trellis-spec-bootstrap` is a platform-neutral bundled skill that guides the AI through analyzing your repository and filling the empty spec templates that `trellis init` generates.
+
+When you run `trellis init`, Trellis creates a bootstrap task (`00-bootstrap-guidelines`) and installs this skill. In your first Trellis session, the AI detects the bootstrap task, runs `trellis-research` across your codebase, and fills the placeholder specs under `.trellis/spec/` with conventions grounded in your actual code — your tech stack, naming patterns, directory shape, and existing quality gates.
+
+<Tip>
+  Don't skip the bootstrap task. Starting Trellis with empty spec templates means every sub-agent receives empty scaffolds instead of real conventions. Running the bootstrap task once pays dividends across every future task.
+</Tip>
+
+`trellis-spec-bootstrap` auto-installs across all platforms on `trellis init` and `trellis update`. It replaced the older `cc-codex-spec-bootstrap` marketplace entry starting in v0.6.0.
+
+---
+
+## frontend-fullchain-optimization
+
+`frontend-fullchain-optimization` is a specialized skill for diagnosing and optimizing frontend performance using the Web Vitals framework. Install it when your project has front-end performance concerns you want AI to reason about systematically.
+
+```bash
+npx skills add mindfold-ai/marketplace -s frontend-fullchain-optimization
+```
+
+Once installed, the AI can run a full-chain optimization pass — from identifying Core Web Vitals regressions (LCP, CLS, INP, FID, TTFB) to tracing root causes across bundle size, render-blocking resources, layout shifts, and interaction latency — and propose targeted fixes with before/after impact estimates.
+
+---
+
+## mem-recall
+
+`mem-recall` teaches the AI to invoke `trellis mem` whenever you reference past conversations, so you can retrieve solutions, decisions, and context from previous sessions without leaving your current workflow.
+
+```bash
+npx skills add mindfold-ai/marketplace -s mem-recall
+```
+
+**What it does:** Without `mem-recall`, the AI defaults to "I don't have that context" when you reference something from a previous session. With the skill installed, any reference to past dialogue automatically triggers a two-step retrieval flow:
+
+1. `trellis mem search "<keyword>"` — finds ranked candidate sessions using a weighted full-text search across cleaned dialogue (user turns weighted 3× assistant turns).
+2. `trellis mem context <session-id> --grep <keyword>` — extracts the top-N matching turns plus surrounding context.
+
+**Trigger phrases** (no manual command needed):
+- "last time how did we solve the wait_agent deadlock in #240?"
+- "which project did I discuss the plugin design in?"
+- "find what I told Claude about memory architecture last week"
+- "上次我们怎么处理 #240 的来着？"
+
+**Data sources** — reads local files directly, no upload, no daemon:
+
+| Platform | Session store location |
+|----------|----------------------|
+| Claude Code | `~/.claude/projects/<sanitized-cwd>/*.jsonl` |
+| Codex | `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` |
+| OpenCode | `~/.local/share/opencode/storage/{session,message,part}/...` |
+| Pi Agent | `~/.pi/agent/sessions/<encoded-cwd>/<timestamp>_<id>.jsonl` |
+
+**Prerequisites:** Trellis CLI 0.6.0+ (`npm install -g @mindfoldhq/trellis@latest`).
+
+<Note>
+  `mem-recall` is for AI conversation history only. Use `Grep` / `Read` for code search, `git log` for commit history, and `Read` / `Glob` for current project file search.
+</Note>
+
+---
+
+## Building and Publishing Custom Skills
+
+You can build your own skills and publish them to a Git repository for your team or the community. Custom skills follow the same `SKILL.md` format as official skills and install through the same `npx skills add` command.
+
+See the [Custom Skills guide](/customization/custom-skills) for a walkthrough of writing, testing, and publishing a skill, including how to use `trellis-meta` to scaffold platform-specific skill directories automatically.
+
+---
+
+## Community Skills
+
+Community-contributed skills are coming soon. Watch the [mindfold-ai/marketplace](https://github.com/mindfold-ai/marketplace) repository for new additions, or submit your own skill via a pull request.

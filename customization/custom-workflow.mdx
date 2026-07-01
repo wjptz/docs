@@ -1,0 +1,153 @@
+---
+title: "Customizing the Trellis Workflow for Your Team"
+sidebarTitle: "Workflow"
+description: "Edit workflow.md to reshape phases, rewrite per-turn breadcrumbs, adjust skill routing, and add custom task statuses — no rebuild required."
+---
+
+The entire Trellis development flow lives in one file: `.trellis/workflow.md`. Phase definitions, skill routing rules, per-turn AI reminders, and the task command catalog are all declared there in plain Markdown. To change how the workflow behaves — for your team, your stack, or your process — edit that file and commit it. No Python, no TypeScript, no re-releasing Trellis.
+
+## What workflow.md controls
+
+Every major piece of Trellis runtime behavior maps to a section in `workflow.md`. The table below shows which section does what, who reads it, and when the change takes effect.
+
+| Section in `workflow.md` | Who reads it | Effect |
+|---|---|---|
+| `## Phase Index` + `## Phase 1/2/3` | AI at session start (via `SessionStart` hook) | Defines the three-phase flow and step-by-step instructions inside each phase |
+| `### Skill Routing` | AI at session start | Maps user intent to which skill to load (e.g. "wants new feature" → `trellis-brainstorm`) |
+| `### DO NOT skip skills` | AI at session start | Inlines common excuses for skipping skills and the reasons they're wrong |
+| `[workflow-state:STATUS]` blocks under `## Phase Index` | Workflow-state hook on every `UserPromptSubmit` | Per-turn reminder injected as `<workflow-state>…</workflow-state>` based on the active task's status |
+| `### Task System` (task.py command list) | AI at session start | Reference for all `task.py` subcommands grouped by purpose |
+
+All injection paths read `workflow.md` at runtime. You do not need to rebuild anything after editing it.
+
+## Per-turn breadcrumbs
+
+The `<workflow-state>` block is injected into every turn, nudging the AI toward the right behavior for the current task status. The blocks live inside `## Phase Index` in `workflow.md`. Edit them in place — the hook script only parses the file; it never embeds fallback content of its own.
+
+```markdown
+## Phase Index
+
+[workflow-state:no_task]
+No active task. First classify the current turn and ask for task-creation consent before creating any Trellis task.
+[/workflow-state:no_task]
+
+### Phase 1: Plan
+
+[workflow-state:planning]
+Load trellis-brainstorm; stay in planning.
+Lightweight: prd.md can be enough. Complex: finish prd.md, design.md, and implement.md; ask for review before task.py start.
+[/workflow-state:planning]
+
+### Phase 2: Execute
+
+[workflow-state:in_progress]
+Flow: implement → check → update-spec → finish
+Check conversation history + git status to determine current step; do NOT skip check.
+[/workflow-state:in_progress]
+
+### Phase 3: Finish
+
+[workflow-state:completed]
+User commits changes; then run task.py archive.
+[/workflow-state:completed]
+```
+
+Keep these rules in mind when writing breadcrumb blocks:
+
+- The `STATUS` tag must match `task.json.status` exactly. Default statuses are `planning`, `in_progress`, and `completed`. `no_task` fires when no task is active.
+- Both hyphens and underscores are valid in the tag name (`blocked`, `in-review`, `needs_qa`, and so on).
+- If a status has no matching block, the hook emits the generic fallback `Refer to workflow.md for current step.` and the AI re-reads the workflow contract directly. Delete blocks you do not need.
+- Keep each block short — roughly 200 bytes. This text is injected on every single turn; longer blocks consume attention budget on every message.
+
+<Tip>
+  Breadcrumb changes take effect on the **next user message** — the hook re-reads `workflow.md` on
+  every `UserPromptSubmit`. Phase and skill routing changes take effect on the next session start.
+  Commit your edits and your team picks them up automatically.
+</Tip>
+
+## Custom task statuses
+
+You can add any status string to `task.json` — the breadcrumb system does not require pre-registering statuses. To add a `blocked` state that nudges the AI to escalate instead of guessing:
+
+<Steps>
+  <Step title="Add the breadcrumb block to workflow.md">
+    Place the new `[workflow-state:blocked]` block under `## Phase Index`, alongside the other status blocks:
+
+    ```markdown
+    [workflow-state:blocked]
+    Task is blocked waiting on external input. Don't start new implementation —
+    surface the blocker to the user or spawn `trellis-research` if more investigation helps.
+    [/workflow-state:blocked]
+    ```
+  </Step>
+  <Step title="Set the status on the task">
+    Edit `task.json` directly to switch to your custom status:
+
+    ```bash
+    jq '.status = "blocked"' "$TASK_DIR/task.json" > "$TASK_DIR/task.json.tmp" \
+      && mv "$TASK_DIR/task.json.tmp" "$TASK_DIR/task.json"
+    ```
+
+    From the next message onward, the AI sees the `blocked` breadcrumb. Switch back to `in_progress` the same way to resume the normal flow.
+  </Step>
+</Steps>
+
+<Note>
+  Built-in `task.py` subcommands only transition between the default statuses (`start` →
+  `in_progress`, `archive` → `completed`). Custom statuses are plain strings in
+  `task.json.status`. You can filter tasks by any status string with `task.py list --status
+  <name>`.
+</Note>
+
+## Skill routing
+
+The table under `### Skill Routing` is what the AI consults when deciding whether to load an auto-trigger skill. Add a row for any custom skill you ship:
+
+```markdown
+| User intent                               | Skill               |
+| ----------------------------------------- | ------------------- |
+| Wants a new feature / requirement unclear | trellis-brainstorm  |
+| About to write code / start implementing  | trellis-before-dev  |
+| Finished writing / want to verify         | trellis-check       |
+| Stuck / fixed same bug several times      | trellis-break-loop  |
+| Spec needs update                         | trellis-update-spec |
+| User wants a test plan before writing     | trellis-test-plan   |
+```
+
+No code change is needed. On the next session start, the AI reads the updated table and routes accordingly.
+
+## Adding or reshaping a phase
+
+The Phase sections are plain Markdown. You can reshape them freely:
+
+- **Add a Phase 4: Review** — define numbered steps (4.1, 4.2, …) and their instructions. Reference the new phase from a breadcrumb block (`[workflow-state:in_review]`).
+- **Split Plan into two branches** — replace step numbering with 1A.1 / 1B.1 naming; the AI follows whatever the text says.
+- **Shorten Finish** — delete steps you do not care about (for example, drop the debug retrospective step).
+
+Keep the Phase Index in sync with the detailed Phase sections — the index is included at session start so the AI sees both consistently.
+
+<Note>
+  `get_context.py --mode phase --step X.Y` parses `## Phase X` headings and `#### X.Y` step
+  headings to extract step bodies. If you rename or reshape sections, keep the heading depth
+  consistent — heading depth is significant to the parser.
+</Note>
+
+## When changes take effect
+
+| Change | When AI sees it |
+|---|---|
+| Breadcrumb text | Next user message (re-read on every `UserPromptSubmit`) |
+| Phase / step body | Next session start |
+| Skill routing table | Next session start |
+
+## What not to edit
+
+A few conventions are consumed by scripts and must not drift:
+
+| Do not change | Why |
+|---|---|
+| The tag format `[workflow-state:STATUS]…[/workflow-state:STATUS]` | The workflow-state hook parses this literally |
+| Heading depth for phases and steps (`## Phase X` + `#### X.Y`) | The phase context tool depends on it |
+| `task.py` subcommand names in the task lifecycle list | They must match the actual CLI; renaming in the docs does not rename the script |
+
+Everything else — phrasing, ordering, added sections, rewritten how-to text — is fair game.

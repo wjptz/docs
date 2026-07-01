@@ -1,0 +1,322 @@
+---
+title: "Suncode Changelog: Version History and Release Notes"
+sidebarTitle: "Changelog"
+description: "Version history for Suncode (Trellis): new platforms, workflow changes, bug fixes, breaking changes, and upgrade instructions for every release."
+---
+
+Suncode (Trellis) follows a two-step upgrade model: `trellis upgrade` bumps your globally installed CLI to the latest published package, and `trellis update` syncs the current project's `.trellis/` templates, platform files, hooks, skills, and commands to your local CLI version. Run both commands whenever a new version ships. Breaking releases require `trellis update --migrate`; patch and minor releases need only `trellis update`.
+
+```bash
+# Full upgrade sequence
+trellis upgrade          # Step 1: update the CLI binary
+trellis update           # Step 2: sync the current project
+```
+
+---
+
+<Accordion title="v0.6.5 — 2026-06-25">
+
+Patch release with Trae IDE support, reliable Pi Agent startup context, Pi sub-agent tool configuration fixes, and runtime reliability improvements for Windows channel sessions, hooks, and task planning gates. No `--migrate` required.
+
+## Highlights
+
+### Trae IDE — new first-class platform
+
+Trellis now supports Trae IDE as a fully configured platform.
+
+```bash
+trellis init --trae
+```
+
+`trellis init --trae` writes:
+- `.trae/commands/trellis-*.md` — slash commands with frontmatter
+- `.trae/skills/` — workflow skills and bundled skills
+- `.trae/agents/` — Trellis implement / check / research agents
+- `.trae/hooks/` — shared Python hooks
+- `.trae/hooks.json` — `SessionStart` and `UserPromptSubmit` hook wiring
+
+Trae uses shared hooks for main-session startup and per-turn workflow context. Sub-agent context uses the pull-based prelude because Trae does not expose a Trellis-supported sub-agent prompt mutation surface.
+
+### Pi Agent startup context
+
+Pi Agent's `session_start` event is notify-only and cannot inject model-visible context by itself. v0.6.5 moves the startup payload to the `before_agent_start` event so new Pi sessions receive compact Trellis startup context in `systemPrompt`: workflow state, session overview, active-task status, compact workflow index, and first-reply notice. `.pi/prompts/trellis-start.md` remains as a manual fallback.
+
+### Pi sub-agent tool configuration
+
+Generated `.pi/agents/trellis-*.md` files can now declare `tools` frontmatter for `trellis_subagent`. Tool names are normalized to lowercase and an unused internal path is removed so Pi receives the tool names it expects.
+
+## Reliability Fixes
+
+**Windows channel sessions:** Channel session spawning now resolves Windows npm `.cmd` shims to a spawnable executable path before launch, fixing failures where the supervisor tried to spawn a non-existent `.exe` path.
+
+**Hooks and planning gates:**
+- Shared Python hooks no longer block when stdin is empty.
+- ZCode command fallbacks now stay under `.zcode/commands/trellis/` instead of the shared `.agents/skills/` directory, preventing false template drift on `trellis update --dry-run` in combined Codex + ZCode installs.
+- `workflow.md` now requires curated `implement.jsonl` / `check.jsonl` context before starting implementation.
+- `brainstorm` now requires lossless PRD convergence before planning continues, preventing updated requirements from being dropped during iterative task shaping.
+
+## Upgrade
+
+```bash
+npm install -g @mindfoldhq/trellis@latest
+trellis update
+```
+
+- **Trae users:** Run `trellis init --trae` in projects without `.trae/`; run `trellis update` in existing projects.
+- **Pi users:** Run `trellis update` to receive startup context and extension updates.
+- **Windows channel users:** Install the latest CLI before starting new channel sessions.
+
+</Accordion>
+
+<Accordion title="v0.6.4 — 2026-06-22">
+
+Patch release with two independent bug fixes: Kiro's main session now activates the workflow deterministically, and four platforms without a SessionStart hook (Codex, ZCode, OpenCode, Reasonix) now correctly receive the `trellis-start` skill and `/trellis:start` command. No `--migrate` required.
+
+## Bug Fixes
+
+### `trellis-start` missing on agent-capable platforms without hooks
+
+On Codex, ZCode, OpenCode, and Reasonix — platforms that support sub-agents but have no SessionStart-style hook — the `trellis-start` skill and `/trellis:start` command were not being generated. This left users on those platforms with no way to load workflow context at the start of a session.
+
+The fix correctly scopes the condition so that `trellis-start` is generated for any platform that lacks a SessionStart hook, regardless of whether it supports sub-agents. All four platforms now receive `trellis-start` through the standard generation path.
+
+**What changed for you:**
+- **ZCode / OpenCode / Reasonix users:** Run `trellis update` to receive the previously missing `trellis-start` skill or `/trellis:start` slash command.
+- **Codex users:** No observable change — the output file is byte-identical to before.
+
+### `workflow.md` missing ZCode and Reasonix in platform lists
+
+ZCode and Reasonix were absent from several platform lists in `workflow.md`, including the active task routing section, phases 1.2, 1.3, 1.5, 2.2, and the pull-based sub-agent dispatch block. Both platforms are now correctly included everywhere.
+
+### Kiro main-session workflow injection
+
+Before v0.6.4, Kiro projects had no deterministic way to activate the Trellis workflow in the main session. The per-turn workflow state injection and session startup hooks were only wired for sub-agents.
+
+v0.6.4 adds the missing wiring:
+- A new main Trellis agent (`.kiro/agents/trellis.json`) wires per-turn workflow state injection and session startup, with `workflow.md` as an always-loaded resource.
+- A new IDE hook file (`.kiro/hooks/trellis-workflow-state.kiro.hook`) fires on every prompt submission in the Kiro IDE.
+- The three sub-agents keep their existing context injection unchanged.
+
+**What changed for you:**
+- **Kiro users:** Run `trellis update` to write the new main-session agent and IDE hook.
+
+## Upgrade
+
+```bash
+npm install -g @mindfoldhq/trellis@latest
+trellis update
+```
+
+</Accordion>
+
+<Accordion title="v0.6.3 — 2026-06-18">
+
+Five enhancements: ZCode platform support, opt-in `--with-statusline` status bar, Pi session adapter for `trellis mem`, reasoning frameworks in brainstorm and break-loop skills, and the Windsurf → Devin platform rename. Two bug fixes. Only the Windsurf → Devin rename requires `trellis update --migrate`, and only if you previously initialized with `--windsurf`.
+
+## New Platform: ZCode (`--zcode`)
+
+ZCode (智谱 / Z.ai) is now a supported pull-based, agent-capable platform with no hook integration.
+
+```bash
+trellis init --zcode
+```
+
+`trellis init --zcode` writes:
+
+| Target | Path | Contents |
+|--------|------|----------|
+| Shared skills | `.agents/skills/` | Byte-identical with Codex / Gemini |
+| Commands | `.zcode/commands/trellis/` | Invoked as `/trellis:<name>` |
+| Sub-agents | `.zcode/cli/agents/` | `trellis-implement`, `trellis-check` with pull-based prelude |
+
+## Claude Code Status Bar (`--with-statusline`)
+
+`trellis init --with-statusline` installs an opt-in Trellis status bar for Claude Code (off by default). The status bar displays: model, context percentage, branch, session duration, developer name, task count, and rate limits.
+
+When the flag is omitted and Claude Code is selected, `init` prompts interactively (`default: false`; skipped under `-y`). The hook is not tracked by `trellis update`, so opted-out projects never have it force-installed.
+
+## Pi Session Adapter for `trellis mem`
+
+`trellis mem` now reads Pi Agent sessions. Use `--platform pi` or `--platform all` to include Pi sessions in search results. Session discovery uses `~/.pi/agent/sessions/--<encoded-cwd>--/<timestamp>_<id>.jsonl`, with custom dirs overridable via `PI_CODING_AGENT_DIR`, `PI_CODING_AGENT_SESSION_DIR`, or `settings.json sessionDir`.
+
+## Reasoning Frameworks in Skills
+
+Two reasoning frameworks are embedded in the shared workflow skills, available to every platform after `trellis update`:
+
+| Skill | Framework | When it applies |
+|-------|-----------|----------------|
+| `trellis-brainstorm` | First Principles Analysis | Requirement discovery — decompose to fundamental truths, challenge assumptions, build the minimum viable solution |
+| `trellis-break-loop` | Bayesian Reasoning | Repeated debugging — set hypothesis priors, update beliefs by evidence strength, seek discriminating evidence before committing a fix |
+
+## Devin Platform (renamed from Windsurf)
+
+Cognition renamed Windsurf to Devin Desktop (2026-06-02 OTA) and moved its config dir from `.windsurf/` to `.devin/`. Trellis follows the rename.
+
+- `trellis init --devin` writes `.devin/workflows/` and `.devin/skills/`.
+- `--windsurf` remains a **deprecated alias** for `--devin` for one version, with a deprecation notice.
+- `TRELLIS_PLATFORM=windsurf` and an existing `.windsurf/workflows/` directory are still detected as Devin for back-compatibility.
+
+## Bug Fixes
+
+**`trellis mem --cwd` Claude session filter on Windows:** The path sanitizer did not account for Windows path separators (backslashes, drive colons, dots), so filtering by `--cwd` returned zero sessions. The fix covers all separators and adds a fallback scan when the derived project directory is missing, so the filter never silently returns empty results.
+
+**`.trellis` auto-commit staging scope:** Fixed an issue where auto-commits could inadvertently stage task and workspace files from other parallel sessions. Commits now stage only the files relevant to the active task and session.
+
+## Upgrade
+
+```bash
+npm install -g @mindfoldhq/trellis@latest
+trellis update
+```
+
+<Note>
+  If you initialized Trellis with `--windsurf`, run `trellis update --migrate` to apply the `rename-dir` migrations that move `.windsurf/workflows/` → `.devin/workflows/` and `.windsurf/skills/` → `.devin/skills/`. The migration is idempotent: projects without a `.windsurf/` directory are silently skipped.
+</Note>
+
+</Accordion>
+
+<Accordion title="v0.6.2 — 2026-06-17">
+
+Docs-only fix following up on the v0.6.1 workflow simplification. No `--migrate` required; no source code changed — this is a template refresh.
+
+## Bug Fix
+
+### `/continue` routing pointed at the deleted Phase 3.1
+
+The `/continue` command's resume-routing table still sent sessions with a completed check phase to Phase **3.1**, which v0.6.1 had removed. It now correctly routes to **3.3** (spec update) → **3.4** (commit), matching the simplified workflow.
+
+## Upgrade
+
+```bash
+npm install -g @mindfoldhq/trellis@latest
+trellis update
+```
+
+</Accordion>
+
+<Accordion title="v0.6.1 — 2026-06-17">
+
+Docs-only workflow refactor. No `--migrate` required; no source code changed. Run `trellis update` to refresh `.trellis/workflow.md`, the bundled `trellis-meta` skill, the three marketplace workflow variants, and (for Copilot users) the `finish-work` prompt.
+
+## Refactor
+
+### Phase 3.1 removed from `workflow.md`
+
+Phase 3.1 (`Quality verification`) was structurally identical to the final iteration of Phase 2.2 (`Quality check`) — both loaded `trellis-check` and ran spec compliance, lint, typecheck, tests, and cross-layer consistency. It has been removed as redundant.
+
+Its two unique value points are folded into existing steps:
+
+- **Full-scope final check** → Phase 2.2 gains a "Final pass (before Phase 3.4 commit)" paragraph: the last 2.2 of a task must list all affected packages and walk each package's spec index Quality Check section, not just check the latest implement chunk.
+- **Spec-sync trigger** → Phase 3.4 gains a "Spec-sync preamble": before drafting commits, consider whether non-obvious knowledge from this task should land in `.trellis/spec/` via Phase 3.3 first.
+
+Step numbering is kept stable (3.1 is left as a numbered gap; 3.2 / 3.3 / 3.4 / 3.5 unchanged) so external references in docs, tutorials, and specs do not break.
+
+### Marketplace workflow variants synced
+
+The three marketplace workflow variants (`native`, `tdd`, `channel-driven-subagent-dispatch`) received the same Phase 3.1 removal, Phase 1.3 label normalization, Phase 2.2 final-pass paragraph, and Phase 3.4 spec-sync preamble.
+
+## Upgrade
+
+```bash
+npm install -g @mindfoldhq/trellis@latest
+trellis update
+```
+
+<Note>
+  Users on 0.5.x should follow the [v0.6.0 upgrade path](#v060--2026-06-15) (`trellis update --migrate`) first, then run `trellis update` again to land on 0.6.1.
+</Note>
+
+</Accordion>
+
+<Accordion title="v0.6.0 — 2026-06-15">
+
+Breaking release from 0.5.x. Headline additions: multi-agent collaboration via `trellis channel`, a published `@mindfoldhq/trellis-core` SDK, and cross-session memory recall via `trellis mem`. **Upgrading from 0.5.x requires `trellis update --migrate`.**
+
+<Tip>
+  **Multi-agent collaboration is now a first-class primitive.** `trellis channel` ships a worker-supervisor runtime with Claude `stream-json` and Codex `app-server` adapters, persistent event logs, forum/thread channels for issue-style boards, a default OOM guard, and reusable lifecycle/subscription APIs in `@mindfoldhq/trellis-core/channel`. The bundled `check` and `implement` agent definitions auto-install with `trellis init` / `trellis update`, so `channel spawn --agent check` works out of the box.
+</Tip>
+
+## Multi-Agent Collaboration (`trellis channel`)
+
+`trellis channel` is a worker-supervisor primitive for coordinating multiple AI processes through a shared event log.
+
+**Subcommands:** `create`, `send`, `wait`, `spawn`, `run`, `list`, `messages`, `kill`, `rm`, `prune`.
+
+**Key features:**
+- Claude `stream-json` and Codex `app-server` JSON-RPC adapters
+- Events persist to `~/.trellis/channels/<project>/<channel>/events.jsonl`
+- `--type threads` and `--type forum` for durable issue/thread-style boards
+- Default OOM guard: `channel.worker_guard.idle_timeout` (5m) and `max_live_workers` (6)
+- Durable idempotency — repeated writes with the same key return the original event without duplicates
+
+## Memory Recall (`trellis mem`)
+
+A local CLI that indexes Claude Code and Codex conversation logs on disk and exposes them through `list`, `search`, `context`, `extract`, and `projects` subcommands. Nothing is uploaded.
+
+```bash
+trellis mem search "deadlock fix" --since 2026-06-01
+trellis mem context <session-id> --grep "deadlock" --turns 3
+```
+
+**Phase slicing:** `mem extract <id> --phase brainstorm | implement | all` slices conversations by Trellis task lifecycle phase. **Cross-day window correctness:** `--since` now matches sessions whose `[created, updated]` range overlaps the filter window, not just sessions that started in range.
+
+## New Platforms
+
+- **Reasonix (DeepSeek-Reasonix)** — 15th supported platform via `trellis init --reasonix`. Skills live at `.reasonix/skills/<name>/SKILL.md`; sub-agent skills carry `runAs: subagent`.
+- **Pi Agent — native `trellis_subagent` extension** — `single` / `parallel` / `chain` dispatch modes, native progress cards (`Alt+O` for detail view), throttled live updates.
+
+## Platform Updates
+
+- **Codex** — `codex.dispatch_mode: inline` is now the default. The main Codex agent edits code directly; opt back into sub-agent dispatch via `codex.dispatch_mode: sub-agent` in `.trellis/config.yaml`. The `[features.multi_agent_v2]` block is removed from generated config (it caused config load failures on Codex 0.130 and earlier).
+- **OpenCode** — Hook command now emits a shell-aware `TRELLIS_CONTEXT_ID` export.
+- **Cursor** — SessionStart hook payload now uses `additional_context` field, restoring task-context injection on session resume.
+- **GitHub Copilot** — Copilot hook envelope schema fixed so context injection lands without truncation.
+
+## SDK Extraction (`@mindfoldhq/trellis-core`)
+
+`@mindfoldhq/trellis-core` is now a second published npm package, exposing `/channel`, `/task`, `/mem`, and `/testing` subpath exports. The CLI depends on it; both packages share one version per release.
+
+## Workflow Changes
+
+- **Task triage consent gates** — simple/small requests ask only whether to create a task; complex requests ask permission to enter planning.
+- **Planning artifacts** — `prd.md`, `design.md`, and `implement.md` are now the standard planning artifact set for complex tasks.
+- **Selectable workflow templates** — `trellis init --workflow` and `trellis workflow` switch between `native`, `tdd`, and `channel-driven-subagent-dispatch`.
+- **`trellis upgrade` command** — wraps `npm install -g @mindfoldhq/trellis@<channel>` with `--tag` and `--dry-run` flags.
+
+## New Bundled Skills
+
+- **`trellis-channel`** — teaches the AI when to reach for `trellis channel` for multi-agent collaboration.
+- **`trellis-session-insight`** — teaches the AI when to reach for `trellis mem` for past-solution recall, decision retrieval, and cross-session continuation.
+- **`trellis-spec-bootstrap`** — platform-neutral spec bootstrapping skill, replaces the older `cc-codex-spec-bootstrap` marketplace entry.
+
+## Bug Fix: Silent sub-agent disappearance with Exa MCP
+
+`trellis-implement` and `trellis-check` declared specific Exa MCP tool names explicitly. Claude Code silently skips agent registration when an explicit MCP tool name fails to resolve, causing all Trellis sub-agents to disappear for users without Exa MCP. Fix: the bundled agents drop the Exa-specific tool entries; `trellis-research` uses an `mcp__*` wildcard that Claude Code resolves lazily.
+
+## Upgrade
+
+**From 0.5.x — `--migrate` is required:**
+
+```bash
+trellis update --migrate
+```
+
+The breaking-change migration applies automatically. Local customizations are preserved with a warning.
+
+**From any 0.6.0 prerelease (beta.X / rc.X):**
+
+```bash
+trellis update
+```
+
+**Fresh install:**
+
+```bash
+npm install -g @mindfoldhq/trellis
+```
+
+<Warning>
+  Running `update --migrate` from a 0.5.x install also fixes a typo in the bundled skill directory name (`trellis-spec-bootstarp/` → `trellis-spec-bootstrap/`) across every configured platform skill root. This is automatic and idempotent.
+</Warning>
+
+</Accordion>

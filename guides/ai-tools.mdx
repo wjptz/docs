@@ -1,0 +1,311 @@
+---
+title: "AI Tool Integrations: Claude Code, Cursor, Devin & More"
+sidebarTitle: "AI Tools"
+description: "Configure Trellis on Claude Code, Cursor, Codex, Kiro, Devin, Trae, and 11 more AI coding platforms with the same shared .trellis/ core."
+---
+
+Suncode supports 16+ AI coding tools out of the box. The `.trellis/` core — specs, tasks, and workflow — is identical on every platform. What differs is how each platform delivers hooks, sub-agents, skills, and commands. Run `trellis init` with the appropriate flag, and Trellis writes all platform-specific adapter files for you. You can also initialize multiple platforms on the same repo so different team members can use their preferred AI tool while sharing the same conventions and task history.
+
+## Main platform integrations
+
+<Tabs>
+  <Tab title="Claude Code">
+
+Claude Code is the most fully automated Trellis platform. Three Python hooks fire automatically at session boundaries and before sub-agent calls, so you rarely need to prompt for context manually.
+
+**Initialize:**
+
+```bash
+trellis init -u your-name
+# Claude Code is the default — no extra flag needed
+```
+
+**What gets written:**
+
+| Directory | Contents |
+| --- | --- |
+| `.claude/hooks/` | `session-start.py`, `inject-workflow-state.py`, `inject-subagent-context.py` |
+| `.claude/agents/` | `trellis-implement.md`, `trellis-check.md`, `trellis-research.md` |
+| `.claude/skills/` | `trellis-brainstorm`, `trellis-before-dev`, `trellis-check`, `trellis-update-spec`, `trellis-break-loop` |
+| `.claude/commands/trellis/` | `start.md`, `finish-work.md`, `continue.md` |
+
+**How sessions start:**
+
+The `session-start.py` hook fires on every `SessionStart` event. It injects your developer identity, current git status, and active task context before the first prompt is processed. A second hook, `inject-workflow-state.py`, fires on every `UserPromptSubmit` to nudge the AI toward the current task's workflow state.
+
+**Sub-agent context injection:**
+
+When Claude Code spawns a sub-agent (via the `Task` tool), `inject-subagent-context.py` fires as a `PreToolUse` hook and loads the task's `implement.jsonl`, `check.jsonl`, or research context into the sub-agent's environment automatically.
+
+**How to use finish-work:**
+
+```
+/trellis:finish-work
+```
+
+The AI archives the current task, writes the session journal under `.trellis/workspace/<your-name>/`, and prepares the next session's starting state.
+
+  </Tab>
+
+  <Tab title="Cursor">
+
+Cursor is a full class-1 platform with real hooks, real sub-agents, and real skill auto-triggering — feature parity with Claude Code.
+
+**Initialize:**
+
+```bash
+trellis init -u your-name --cursor
+```
+
+**What gets written:**
+
+| Directory | Contents |
+| --- | --- |
+| `.cursor/hooks/` | Shared Python hook scripts (same as Claude Code) |
+| `.cursor/hooks.json` | Hook configuration (Cursor uses a separate file, not `settings.json`) |
+| `.cursor/agents/` | `trellis-implement.md`, `trellis-check.md`, `trellis-research.md` |
+| `.cursor/skills/` | `trellis-brainstorm/SKILL.md`, `trellis-before-dev/SKILL.md`, and three more |
+| `.cursor/commands/` | `trellis-start.md`, `trellis-finish-work.md`, `trellis-continue.md` |
+
+**How sessions start:**
+
+The `session-start.py` hook fires on `SessionStart` and injects identity, git status, and active task context. The `inject-workflow-state.py` hook fires per prompt to keep the workflow state current.
+
+**Commands use a hyphen prefix in Cursor:**
+
+```
+/trellis-start
+/trellis-continue
+/trellis-finish-work
+```
+
+**How to use finish-work:**
+
+```
+/trellis-finish-work
+```
+
+  </Tab>
+
+  <Tab title="Codex">
+
+Codex uses `AGENTS.md` as the session prelude (read automatically every session) and `UserPromptSubmit` hooks for per-turn workflow breadcrumbs. Sub-agents are written as TOML files.
+
+**Initialize:**
+
+```bash
+trellis init -u your-name --codex
+```
+
+**What gets written:**
+
+| File / Directory | Contents |
+| --- | --- |
+| `AGENTS.md` (repo root) | Trellis prelude — Codex reads this every session |
+| `.codex/prompts/` | `trellis-start.md`, `trellis-finish-work.md`, `trellis-continue.md` |
+| `.codex/skills/` | The five Trellis workflow skills |
+| `.codex/agents/` | `trellis-implement.toml`, `trellis-check.toml`, `trellis-research.toml` |
+| `.codex/hooks/` | `inject-workflow-state.py`, `session-start.py` |
+| `.codex/hooks.json` | Hook configuration (`UserPromptSubmit` wiring) |
+
+**How sessions start:**
+
+Codex reads `AGENTS.md` at the start of every session — this is the primary context injection path. The `inject-workflow-state.py` hook adds per-prompt breadcrumbs when hooks are enabled.
+
+**Enable hooks (required for per-turn injection):**
+
+Add to `~/.codex/config.toml`:
+
+```toml
+[features]
+hooks = true   # Codex 0.129+
+```
+
+On Codex 0.129+, run `/hooks` once in the Codex TUI to approve the Trellis `UserPromptSubmit` hook. Without this one-time approval, the workflow breadcrumb won't auto-inject and Codex falls back to prelude-only mode (reads `AGENTS.md` every session — same content, no event-driven injection).
+
+**How to use finish-work:**
+
+Invoke as a skill prompt (Codex has no `/command` primitive):
+
+```
+Run trellis-finish-work
+```
+
+  </Tab>
+
+  <Tab title="Kiro">
+
+Kiro ships a per-turn `userPromptSubmit` hook on the `trellis` agent. You must activate the Trellis agent before hooks fire.
+
+**Initialize:**
+
+```bash
+trellis init -u your-name --kiro
+```
+
+**What gets written:**
+
+| File / Directory | Contents |
+| --- | --- |
+| `.kiro/agents/trellis.json` | Main Trellis agent — `userPromptSubmit` hook + `agentSpawn` hook + `workflow.md` as always-loaded resource |
+| `.kiro/agents/` | `trellis-implement.json`, `trellis-check.json`, `trellis-research.json` |
+| `.kiro/hooks/` | `*.py` hook scripts + `trellis-workflow-state.kiro.hook` |
+| `.kiro/skills/` | The five Trellis skills with `SKILL.md` per skill |
+
+**How sessions start:**
+
+The `agentSpawn` hook fires when the `trellis` agent starts and injects session context. The per-turn `userPromptSubmit` hook keeps the workflow state current.
+
+**Activate the Trellis agent (required):**
+
+```bash
+# Persist across sessions
+kiro-cli settings chat.defaultAgent trellis
+
+# Or switch for the current session only
+/agent swap trellis
+```
+
+Without activating the `trellis` agent, Kiro runs its built-in `kiro_default` agent and the workflow hooks never fire.
+
+**Kiro IDE:** Confirm the `trellis-workflow-state.kiro.hook` is on and trusted in Kiro's Agent Hooks UI.
+
+**How to use finish-work:**
+
+Invoke as a skill prompt (Kiro has no `/command` primitive for start/finish-work/continue):
+
+```
+Run trellis-finish-work
+```
+
+  </Tab>
+
+  <Tab title="Trae IDE">
+
+Trae IDE is a fully automated platform (added in v0.6.5) with shared Python hooks for main-session startup and per-turn workflow context. Sub-agent context uses a pull-based prelude.
+
+**Initialize:**
+
+```bash
+trellis init -u your-name --trae
+```
+
+**What gets written:**
+
+| File / Directory | Contents |
+| --- | --- |
+| `.trae/commands/` | `trellis-*.md` slash commands for `start`, `finish-work`, and `continue` |
+| `.trae/skills/` | The five Trellis workflow skills and bundled skills |
+| `.trae/agents/` | `trellis-implement.md`, `trellis-check.md`, `trellis-research.md` |
+| `.trae/hooks/` | Shared Python hook scripts |
+| `.trae/hooks.json` | Hook configuration for `SessionStart` and `UserPromptSubmit` |
+
+**How sessions start:**
+
+The `SessionStart` hook fires when you open a session and injects your developer identity, current git status, and active task context. The `UserPromptSubmit` hook fires per prompt to keep the workflow state current.
+
+**How to use finish-work:**
+
+```
+/trellis-finish-work
+```
+
+  </Tab>
+
+  <Tab title="Devin / Antigravity / Kilo">
+
+These platforms are workflow-and-skill only: no sub-agent context injection and no hooks. Trellis writes skill files and workflow definitions that the AI reads as instructions.
+
+**Initialize:**
+
+```bash
+# Devin (formerly Windsurf — --windsurf still works as a deprecated alias)
+trellis init -u your-name --devin
+
+# Antigravity
+trellis init -u your-name --antigravity
+
+# Kilo
+trellis init -u your-name --kilo
+```
+
+**What gets written:**
+
+<Accordion title="Devin">
+
+| File / Directory | Contents |
+| --- | --- |
+| `.devin/` | Devin-native workflow files for `start`, `finish-work`, and `continue` |
+| `.devin/skills/` | The five Trellis workflow skills |
+
+Devin reads workflow files directly. Trellis context loads when you invoke a workflow at the start of a session. No hooks fire automatically.
+
+</Accordion>
+
+<Accordion title="Antigravity">
+
+| File / Directory | Contents |
+| --- | --- |
+| `.agent/` | Antigravity-native workflow files for `start`, `finish-work`, and `continue` |
+| `.agent/skills/` | The five Trellis workflow skills |
+
+Invoke the start workflow at the beginning of each session to load spec and task context.
+
+</Accordion>
+
+<Accordion title="Kilo">
+
+| File / Directory | Contents |
+| --- | --- |
+| `.kilocode/workflows/` | `start.md`, `finish-work.md` |
+| `.kilocode/skills/` | The five Trellis skills with `SKILL.md` per skill |
+
+Kilo has no hook integration. Run the start workflow manually at the beginning of each session.
+
+</Accordion>
+
+**How sessions start on all three:**
+
+Open a session and invoke the start workflow by name or description. The AI reads the workflow file, loads your identity, active task, and relevant specs, then proceeds.
+
+**How to use finish-work:**
+
+Invoke the finish-work workflow by name:
+
+```
+Run the trellis finish-work workflow
+```
+
+  </Tab>
+</Tabs>
+
+---
+
+## The `.agents/skills/` shared layer
+
+Every platform that Trellis configures also writes the five Trellis skills to `.agents/skills/` — the cross-platform standard defined by [agentskills.io](https://agentskills.io). This means the Trellis skill set is readable by any AI coding agent that follows this convention, even if it is not one of the 16 natively configured platforms.
+
+Agents that benefit from this shared layer include: **Amp**, **Cline**, **Deep Agents**, **Firebender**, **Kimi Code CLI**, **Warp**, and any other tool that reads `.agents/skills/` from the repo root.
+
+```
+.agents/skills/
+├── trellis-brainstorm/
+│   └── SKILL.md
+├── trellis-before-dev/
+│   └── SKILL.md
+├── trellis-check/
+│   └── SKILL.md
+├── trellis-update-spec/
+│   └── SKILL.md
+└── trellis-break-loop/
+    └── SKILL.md
+```
+
+On these agents you manage Trellis through the `.trellis/` core plus whatever prelude file the agent reads. The skills auto-trigger when the agent's prompt matches a skill's trigger description, giving you spec loading, cross-layer checks, and knowledge capture without any additional configuration.
+
+<Tip>
+  If your team uses multiple AI tools, run `trellis init` with each platform's flag for every
+  developer — for example `trellis init --cursor -u your-name` or `trellis init --trae -u your-name`.
+  All platform directories coexist in the same repo; the `.trellis/` spec and task core is always
+  shared.
+</Tip>

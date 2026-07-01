@@ -1,0 +1,268 @@
+---
+title: "Tasks: Persistent Work Units for Structured AI Development"
+sidebarTitle: "Tasks"
+description: "Tasks are self-contained work units that store requirements, planning artifacts, and context manifests so AI agents always start from a documented plan."
+---
+
+A task is a directory in your repository that collects everything an AI agent needs to complete a piece of work: the requirements, the technical design, the execution plan, the research findings, and the context manifests that tell sub-agents which specs to read. Because a task lives in your repo and persists across sessions, the next AI session picks up exactly where the last one left off — no retelling, no guessing.
+
+## Task Lifecycle
+
+Every task moves through a predictable sequence of statuses. The current status drives the per-turn workflow-state breadcrumb that Trellis injects into the AI session, keeping the agent aligned with the correct phase at all times.
+
+```
+create → plan artifacts → optional jsonl context → start → implement/check → finish → archive
+```
+
+| Status | Set By | Meaning |
+| --- | --- | --- |
+| `planning` | `task.py create` | Task directory exists; requirements and planning artifacts are being written |
+| `in_progress` | `task.py start` | Planning artifacts reviewed and approved; implementation is active |
+| `completed` | `task.py archive` | Written immediately before the task moves to the archive directory |
+| `archived` | Archive move | Task stored under `.trellis/tasks/archive/YYYY-MM/` |
+
+<Note>
+  `task.py start` only transitions tasks that are in `planning` status. Tasks already `in_progress` or `in review` are left untouched, so resuming a task in a new session doesn't clobber its state.
+</Note>
+
+## Task Directory Structure
+
+Each task is one directory under `.trellis/tasks/`:
+
+```text
+.trellis/tasks/<MM-DD-slug>/
+├── task.json          # Status, priority, assignee, branch, PR URL, relationships
+├── prd.md             # Requirements, constraints, acceptance criteria, out-of-scope
+├── design.md          # Technical design (complex tasks only)
+├── implement.md       # Ordered execution plan (complex tasks only)
+├── implement.jsonl    # Spec/research manifest for the implementation sub-agent
+├── check.jsonl        # Spec/research manifest for the verification sub-agent
+└── research/          # Research artifacts from trellis-research or planning
+    └── *.md
+```
+
+The directory name combines the creation date and a slug, for example `05-14-user-auth`. This makes tasks sortable by date and human-readable in file explorers.
+
+## Task Artifacts
+
+Not every artifact is required for every task. Lightweight tasks can proceed with just `prd.md`. Complex tasks must have `design.md` and `implement.md` in place before `task.py start` is allowed to run.
+
+| Artifact | Required When | Purpose |
+| --- | --- | --- |
+| `prd.md` | Every task | Requirements, constraints, acceptance criteria, and out-of-scope items |
+| `design.md` | Complex tasks | Technical boundaries, contracts, data flow, compatibility, tradeoffs, rollback approach |
+| `implement.md` | Complex tasks | Ordered checklist, validation commands, review gates, rollback points |
+| `research/*.md` | When investigation is needed | Durable facts discovered during planning — API behavior, library comparisons, existing patterns |
+| `implement.jsonl` | Sub-agent-capable platforms | Spec and research files to inject into the implementation sub-agent |
+| `check.jsonl` | Sub-agent-capable platforms | Spec and research files to inject into the verification sub-agent |
+
+<Tip>
+  `implement.md` and `implement.jsonl` serve different purposes. The `.md` file is the human-readable execution plan. The `.jsonl` file is the machine-readable manifest of stable context files. Both can exist on the same task.
+</Tip>
+
+## How `task.py` Manages the Lifecycle
+
+The `.trellis/scripts/task.py` script is the single entry point for creating, advancing, and archiving tasks. The AI calls it directly; you can also run it from the terminal.
+
+### Creating a task
+
+```bash
+TASK_DIR=$(python3 .trellis/scripts/task.py create "Add user login" \
+  --slug user-login \
+  --assignee alice \
+  --priority P1 \
+  --description "Implement JWT login flow")
+
+# Creates: .trellis/tasks/05-14-user-login/
+# Files:   task.json, prd.md
+# On sub-agent platforms: also seeds implement.jsonl + check.jsonl
+```
+
+`task.py create` sets the current session's active-task pointer immediately, so the next user message receives the `[workflow-state:planning]` breadcrumb without any additional steps.
+
+### Starting a task
+
+```bash
+python3 .trellis/scripts/task.py start "$TASK_DIR"
+# Flips status from planning → in_progress
+```
+
+### Archiving a task
+
+```bash
+python3 .trellis/scripts/task.py archive user-login
+# Sets status to completed, then moves the directory to .trellis/tasks/archive/YYYY-MM/
+```
+
+### Listing tasks
+
+```bash
+python3 .trellis/scripts/task.py list              # All active tasks
+python3 .trellis/scripts/task.py list --mine       # Your tasks only
+python3 .trellis/scripts/task.py list --status review  # Filter by status
+python3 .trellis/scripts/task.py list-archive 2025-05  # Archived tasks by month
+```
+
+### Managing context manifests
+
+```bash
+# Add an entry to implement.jsonl or check.jsonl
+python3 .trellis/scripts/task.py add-context "$TASK_DIR" implement \
+  ".trellis/spec/backend/database-guidelines.md" "DB conventions for this task"
+
+python3 .trellis/scripts/task.py add-context "$TASK_DIR" check \
+  ".trellis/spec/guides/cross-layer-thinking-guide.md" "Cross-layer verification"
+
+# View all JSONL entries for a task
+python3 .trellis/scripts/task.py list-context "$TASK_DIR"
+
+# Validate that all files listed in the JSONL manifests exist
+python3 .trellis/scripts/task.py validate "$TASK_DIR"
+```
+
+### Other task control commands
+
+```bash
+# Clear the current session's active task pointer (after finishing work)
+python3 .trellis/scripts/task.py finish
+
+# Set the Git branch associated with the task
+python3 .trellis/scripts/task.py set-branch "$TASK_DIR" "feature/user-login"
+
+# Set the PR target branch
+python3 .trellis/scripts/task.py set-base-branch "$TASK_DIR" "main"
+
+# Set the scope used in commit messages: feat(scope): ...
+python3 .trellis/scripts/task.py set-scope "$TASK_DIR" "auth"
+```
+
+## The Three-Phase Workflow
+
+Trellis organizes all task work into three phases defined in `.trellis/workflow.md`. The per-turn workflow-state breadcrumb tells the AI which phase is currently active.
+
+<Steps>
+  <Step title="Phase 1: Plan">
+    The AI classifies the incoming request and asks for task-creation consent. Once you agree, it runs `trellis-brainstorm` to inspect the codebase and draft the planning artifacts.
+
+    1. Classify the turn (conversation, inline small task, or full Trellis task).
+    2. Ask for task-creation consent before creating anything under `.trellis/tasks/`.
+    3. Run `task.py create` to write the task directory and set the active-task pointer.
+    4. Draft `prd.md` with requirements, constraints, acceptance criteria, and out-of-scope items.
+    5. For complex tasks, draft `design.md` and `implement.md` before allowing start.
+    6. Curate `implement.jsonl` and `check.jsonl` with relevant spec and research files.
+    7. Ask for artifact review before proceeding. Task-creation consent is not implementation consent.
+  </Step>
+  <Step title="Phase 2: Execute">
+    After you approve the planning artifacts, the AI runs `task.py start`, which flips the status to `in_progress` and activates the execute-phase breadcrumb.
+
+    1. Run `task.py start` to mark the task `in_progress`.
+    2. Run `trellis-before-dev` to load relevant spec layers before writing any code.
+    3. Dispatch `trellis-implement` (or implement inline) reading JSONL entries, `prd.md`, `design.md` if present, and `implement.md` if present in that order.
+    4. Run `trellis-check` to verify the implementation, run lint and tests, and self-fix findings in a bounded loop.
+    5. Repeat implement → check until checks pass.
+  </Step>
+  <Step title="Phase 3: Finish">
+    Once checks pass, the AI runs final verification, updates specs with any reusable learnings, commits the work, and archives the task.
+
+    1. Run final verification to confirm all acceptance criteria in `prd.md` are met.
+    2. Run `trellis-update-spec` if the task surfaced a reusable rule worth capturing.
+    3. Propose a batched commit plan grouped by logical change; wait for one user confirmation.
+    4. Run `git add` and `git commit` for each approved batch (work commits come first).
+    5. Run `/trellis:finish-work` to archive the task and write the workspace journal entry. This command refuses to run on a dirty working tree — work commits must land before it runs.
+  </Step>
+</Steps>
+
+## `task.json` Schema
+
+`task.py create` writes the following structure:
+
+```json
+{
+  "id": "05-14-user-login",
+  "name": "user-login",
+  "title": "Add user login",
+  "description": "Implement JWT login flow",
+  "status": "planning",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P1",
+  "creator": "alice",
+  "assignee": "alice",
+  "createdAt": "2025-05-14",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "notes": "",
+  "meta": {}
+}
+```
+
+Fields are populated over time:
+
+- `branch` → set by `task.py set-branch`
+- `scope` → set by `task.py set-scope`
+- `status` → transitions through `planning → in_progress → completed`
+- `completedAt` → set by `task.py archive`
+- `parent` / `children` → set by `task.py create --parent` or `task.py add-subtask`
+- `meta` → a free-form object for storing PR URLs, issue IDs, or any custom data
+
+<Note>
+  The `subtasks` field is a checklist of to-do items within a single task (name + status pairs). It is separate from `children`, which holds references to independent child task directories. Don't confuse the two.
+</Note>
+
+## Parent-Child Tasks
+
+A task can have child tasks for larger pieces of work that benefit from a shared parent scope. Children are independent task directories with their own `prd.md`, status, and JSONL files. The parent just holds references for grouping.
+
+```bash
+# Create a child task under an existing parent
+python3 .trellis/scripts/task.py create "JWT middleware" \
+  --slug jwt-middleware \
+  --parent 05-14-user-login
+
+# Link two existing tasks
+python3 .trellis/scripts/task.py add-subtask \
+  05-14-user-login \
+  05-15-jwt-middleware
+
+# Unlink two tasks (does not delete either)
+python3 .trellis/scripts/task.py remove-subtask \
+  05-14-user-login \
+  05-15-jwt-middleware
+```
+
+`task.py list` renders child tasks indented under their parent and shows `[done/total]` progress at a glance.
+
+## Task Lifecycle Hooks
+
+You can configure shell commands that fire automatically on task lifecycle events. Add a `hooks` block to `.trellis/config.yaml`:
+
+```yaml
+hooks:
+  after_create:
+    - 'python3 .trellis/scripts/hooks/linear_sync.py create'
+  after_start:
+    - 'python3 .trellis/scripts/hooks/linear_sync.py start'
+  after_finish:
+    - "echo 'Task finished'"
+  after_archive:
+    - 'python3 .trellis/scripts/hooks/linear_sync.py archive'
+```
+
+| Event | Fires When | Common Use |
+| --- | --- | --- |
+| `after_create` | `task.py create` completes | Create a linked issue in your project tracker |
+| `after_start` | `task.py start` sets the session task | Update issue status to "In Progress" |
+| `after_finish` | `task.py finish` clears the session task | Notify the team, trigger a review |
+| `after_archive` | `task.py archive` moves the task | Mark the issue as "Done" |
+
+Each hook receives `TASK_JSON_PATH` as an environment variable pointing to the task's `task.json` file. A failing hook prints a warning but does not block the task operation.
+
+<Note>
+  The default `config.yaml` ships with the hooks section commented out. Uncomment and edit to activate. Trellis also ships an example Linear sync hook at `.trellis/scripts/hooks/linear_sync.py` that you can use as a starting point for your own integrations.
+</Note>

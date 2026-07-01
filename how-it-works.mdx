@@ -1,0 +1,177 @@
+---
+title: "How Suncode Manages Your AI Coding Sessions"
+sidebarTitle: "How It Works"
+description: "Trace the full Suncode session lifecycle — from startup context injection through task planning, implementation, verification, and journal archiving."
+---
+
+Every Suncode session follows a deterministic path. The framework injects the right context at the right moment, routes work through the correct skills and sub-agents, and commits durable records so the next session picks up exactly where this one left off. This page walks through that path step by step, explaining which files are read, which files are written, and where behavior differs across platforms. For customization points — modifying the workflow, adding custom commands, or building your own skills — see the [customization guides](/customization/custom-workflow).
+
+## Session lifecycle
+
+<Steps>
+  <Step title="Session opens — startup context is injected">
+    When you open an AI session in a Suncode project, the framework injects a compact startup payload before you type anything. This payload is an index and state report, not a full dump of every spec, workflow file, and task artifact.
+
+    | Context | Source |
+    |---|---|
+    | Developer identity | `.trellis/.developer` |
+    | Git state | Current branch, dirty files, recent commits |
+    | Active task | `.trellis/.runtime/sessions/<session-key>.json` |
+    | Active task list | `.trellis/tasks/*/task.json` |
+    | Workflow index | Compact Phase Index from `.trellis/workflow.md` |
+    | Spec index paths | `.trellis/spec/**/index.md` paths |
+    | Workspace memory | Your `workspace/<name>/index.md` and recent journal notes |
+
+    How startup context reaches the AI depends on your platform:
+
+    | Platform group | Startup behavior |
+    |---|---|
+    | Claude Code, Cursor, OpenCode, Gemini CLI, Qoder, CodeBuddy, Droid, Pi Agent | A SessionStart hook, plugin, or extension injects compact startup context automatically. |
+    | Codex | `AGENTS.md` loads automatically. A `UserPromptSubmit` hook injects the workflow-state breadcrumb on each turn. |
+    | Copilot | SessionStart output is diagnostic-only in current hosts. Suncode relies on prompt hooks and skill files for model-visible context. |
+    | Kiro | Context is delivered through `.kiro/` skills and agent files; there is no Suncode SessionStart hook by default. |
+    | Kilo, Antigravity, Devin | The main session reads a workflow or skill entry explicitly (e.g., `/start.md` on Kilo). |
+
+    After this step the AI knows where Suncode context lives. Detailed phase instructions load on demand through workflow-state breadcrumbs and skills — not all at once.
+  </Step>
+
+  <Step title="Each prompt receives the current workflow state">
+    On hook-capable platforms, every message you send triggers a lightweight workflow-state injection. This is the per-turn guardrail that keeps the AI aligned with the task's current status.
+
+    The hook resolves the active task for your session and reads `.trellis/workflow.md` for the matching block:
+
+    ```text
+    [workflow-state:STATUS]
+    ...
+    [/workflow-state:STATUS]
+    ```
+
+    The block body is wrapped in `<workflow-state>...</workflow-state>` and injected into the current turn. If no active task exists, the pseudo-status is `no_task`. If no matching block is found, the hook emits `Refer to workflow.md for current step.`
+
+    The hook is parser-only. The actual breadcrumb wording lives in `.trellis/workflow.md` — change behavior there, not in the hook script.
+  </Step>
+
+  <Step title="Suncode triages the current turn">
+    When there is no active task, the AI classifies your request before creating anything under `.trellis/tasks/`. Task creation requires your explicit consent.
+
+    | Route | When it applies | What the AI asks |
+    |---|---|---|
+    | Simple conversation | No code changes; Q&A, explanation, or lookup | No task by default. If a task might help, asks only whether this turn should create one. |
+    | Inline small task | A contained edit verifiable in one turn | Asks whether to create a Suncode task. If you say no, works inline. |
+    | Full Suncode task | Multi-file work, durable plan, or workflow/spec changes | Explains why a task is useful and asks whether Suncode may create a task and enter planning. |
+
+    Consenting to task creation is not consenting to implementation. Implementation has a separate planning review gate.
+  </Step>
+
+  <Step title="Task creation writes the planning state">
+    When you consent, the AI creates a task directory:
+
+    ```bash
+    python3 ./.trellis/scripts/task.py create "<title>" --slug <name>
+    ```
+
+    This writes:
+
+    ```text
+    .trellis/tasks/<MM-DD-name>/
+    ├── task.json          # Metadata; initial status is "planning"
+    ├── prd.md             # Requirements document (from default template)
+    ├── implement.jsonl    # Spec/research context manifest for implementation
+    └── check.jsonl        # Spec/research context manifest for verification
+    ```
+
+    `task.py create` also best-effort sets the current session's active-task pointer so the next prompt immediately receives the `[workflow-state:planning]` block. `design.md` and `implement.md` are not created by the script — the AI writes them during planning when the task is complex enough to need them.
+
+    The `trellis-brainstorm` skill then fires. It inspects your codebase before asking questions, drafts and iterates `prd.md` one question at a time, and produces `design.md` and `implement.md` for complex tasks.
+  </Step>
+
+  <Step title="Planning produces the right artifacts">
+    Planning converts your request into files that implementation and review can trust. The artifacts required depend on task complexity:
+
+    | Artifact | Required when | Purpose |
+    |---|---|---|
+    | `prd.md` | Every task | Requirements, constraints, acceptance criteria, and out-of-scope items |
+    | `design.md` | Complex tasks | Technical design: boundaries, contracts, data flow, tradeoffs, rollback |
+    | `implement.md` | Complex tasks | Execution plan: ordered checklist, validation commands, review gates |
+    | `research/*.md` | When investigation matters | Durable facts discovered during planning |
+    | `implement.jsonl` | Sub-agent-capable platforms | Spec and research file paths for the implementation sub-agent |
+    | `check.jsonl` | Sub-agent-capable platforms | Spec and research file paths for the verification sub-agent |
+
+    Lightweight tasks can be PRD-only. Complex tasks must have `prd.md`, `design.md`, and `implement.md` before implementation starts.
+
+    `implement.jsonl` and `check.jsonl` list stable context files — spec files and task research notes — that the sub-agent reads before working. Source files you are about to modify do not belong in these manifests.
+  </Step>
+
+  <Step title="Implementation and verification run">
+    Once you review the planning artifacts, type `/trellis:continue` to activate the task and enter implementation:
+
+    ```bash
+    python3 ./.trellis/scripts/task.py start <task-dir>
+    # Sets task.json status from "planning" to "in_progress"
+    ```
+
+    How implementation runs depends on your platform:
+
+    | Execution path | Platforms | How context loads |
+    |---|---|---|
+    | Hook-push sub-agent | Claude Code, Cursor, OpenCode, CodeBuddy, Droid, Pi Agent | A hook injects JSONL entries, then `prd.md`, `design.md`, and `implement.md` before the sub-agent starts. |
+    | Pull-prelude sub-agent | Codex, Copilot, Gemini CLI, Qoder, Kiro | The sub-agent definition tells the agent to read the active task artifacts and JSONL entries before starting. |
+    | Main-session skill flow | Codex inline, Kilo, Antigravity, Devin | The main session loads Trellis skills and reads `prd.md` and relevant specs inline. |
+
+    After implementation, `trellis-check` fires automatically. It reads the changed files, the task artifacts, the relevant specs, and your project's lint, typecheck, and test commands. It is allowed to fix findings directly, then rerun checks in a bounded loop.
+  </Step>
+
+  <Step title="Specs update and commits land">
+    After checks pass, the `trellis-update-spec` skill fires. If the task taught a reusable rule, the skill writes it into `.trellis/spec/` so future tasks can load it through `implement.jsonl` context.
+
+    The main session then drives the work commit. It reads `git status --porcelain`, separates task files from unrelated dirty files, groups changes into logical commits, prints the proposed commit plan, waits for your confirmation, and runs `git add` and `git commit` per batch.
+
+    <Tip>
+      If the AI stalls at any point in the workflow, type `/trellis:continue`. Suncode reads `task.json.status` and the workflow-state breadcrumb to determine the next step and loads the relevant workflow detail before continuing. You never need to remember which phase you are in.
+    </Tip>
+  </Step>
+
+  <Step title="/trellis:finish-work archives and journals">
+    Only after the work commits exist should you run:
+
+    ```text
+    /trellis:finish-work
+    ```
+
+    The finish command performs bookkeeping only — it is not the command that commits feature code:
+
+    1. Checks that no current-task work is still uncommitted; stops if it is.
+    2. Archives the task to `.trellis/tasks/archive/YYYY-MM/` via `task.py archive`.
+    3. Appends a session summary to `.trellis/workspace/<name>/journal-N.md` via `add_session.py`.
+    4. Updates workspace indexes.
+
+    The resulting git history is: `<work commits>` → `chore(task): archive ...` → `chore: record journal`.
+  </Step>
+</Steps>
+
+## What survives the session
+
+After the session completes, all durable state lives in committed files. The next AI session reads the repository state directly — it does not need the previous chat transcript to know what the task was, which specs apply, or which workflow step comes next.
+
+| Stored in | What survives |
+|---|---|
+| `.trellis/tasks/<task>/` | PRD, design, implementation plan, research notes, context manifests, metadata, and archived history |
+| `.trellis/spec/` | Team conventions and reusable lessons captured by `trellis-update-spec` |
+| `.trellis/workspace/<developer>/` | Developer journals and the cross-session memory the AI reads at session start |
+| Git commits | Reviewable units of code, docs, spec updates, archive entries, and journal changes |
+
+## Cross-session memory in practice
+
+When you open your next session, Suncode reads your workspace journal and active task list during startup. The AI greets you with a summary of where things stand:
+
+```text
+AI: "Hi Alice — last session you finished the user login feature (commit abc1234),
+     covering the LoginForm component, JWT middleware, and users table.
+     You have one active task: 'Add team invitations' (planning). What next?"
+```
+
+Journals live at `.trellis/workspace/<name>/journal-N.md`. Every `/trellis:finish-work` appends one. The active-task pointer is stored in `.trellis/.runtime/sessions/` (gitignored) so each AI session window tracks its own task independently.
+
+<Tip>
+  If the AI appears stuck or is skipping a workflow step, type `/trellis:continue`. Suncode uses `task.json.status` plus the per-turn workflow-state breadcrumb to locate the current phase and load the precise workflow instructions needed to advance. You never have to remember the phase sequence yourself.
+</Tip>

@@ -1,0 +1,197 @@
+---
+title: "Get Started with Suncode in Minutes"
+sidebarTitle: "Quick Start"
+description: "Install the Suncode CLI, initialize your project for your AI platform, and complete your first AI-managed coding task from prompt to archived commit."
+---
+
+Suncode takes about five minutes to install and initialize. By the end of this guide you will have the CLI installed globally, your project wired up for your AI platform of choice, and a working understanding of the four-step loop that drives every Suncode session. The framework adds files to your repository — all under `.trellis/` plus a platform-specific config directory — that are committed alongside your code so your whole team benefits from the same workflow.
+
+<Note>
+  **Requirements**: Node.js 18+ and Python 3.9+ must be installed. Mac, Linux, and Windows are all fully supported.
+</Note>
+
+## Steps
+
+<Steps>
+  <Step title="Install the CLI">
+    Install the Suncode CLI globally from npm:
+
+    ```bash
+    npm install -g @mindfoldhq/trellis@latest
+    ```
+
+    Verify the installation:
+
+    ```bash
+    trellis --version
+    ```
+
+    <Tip>
+      To upgrade an existing installation, run `trellis upgrade` (available in CLI 0.6.0+). If your installed version is older than 0.6.0, use `npm install -g @mindfoldhq/trellis@latest` directly, then use `trellis upgrade` for every future bump.
+    </Tip>
+  </Step>
+
+  <Step title="Initialize your project">
+    Navigate to your project directory and run `trellis init` with your developer name and the flag for your AI platform:
+
+    ```bash
+    cd your-project
+    trellis init -u your-name --claude
+    ```
+
+    Replace `your-name` with your developer identity — this becomes your personal workspace at `.trellis/workspace/your-name/`. Replace `--claude` with the flag that matches your AI tool, or combine multiple flags to configure several platforms at once:
+
+    ```bash
+    # Configure two platforms at once
+    trellis init -u your-name --claude --cursor
+
+    # Let Suncode detect installed platforms and ask which to configure
+    trellis init -u your-name
+    ```
+
+    **Supported platform flags:**
+
+    | Flag | Platform |
+    |---|---|
+    | `--claude` | Claude Code |
+    | `--cursor` | Cursor |
+    | `--opencode` | OpenCode |
+    | `--codex` | Codex |
+    | `--kiro` | Kiro |
+    | `--gemini` | Gemini CLI |
+    | `--qoder` | Qoder |
+    | `--codebuddy` | CodeBuddy |
+    | `--copilot` | GitHub Copilot |
+    | `--droid` | Droid |
+    | `--pi` | Pi Agent |
+    | `--antigravity` | Antigravity |
+    | `--devin` | Devin |
+    | `--kilo` | Kilo |
+    | `--reasonix` | Reasonix |
+    | `--zcode` | ZCode |
+
+    Running `trellis init` on a fresh project creates the `.trellis/` directory with a spec library scaffold, a `workflow.md` that governs the AI's behavior, and a `00-bootstrap-guidelines` task that walks you through filling in your first project specs. It also writes the platform-specific config directory (for example `.claude/` for Claude Code) with hooks, skills, sub-agents, and commands.
+
+    <Note>
+      **Adding a platform later**: run `trellis init --cursor` (or the flag for the new platform) at any time. Suncode adds the new platform's config directory without touching `.trellis/` or regenerating tasks.
+
+      **Joining an existing project**: run `trellis init -u your-name` in the cloned repo. Suncode detects that `.trellis/` already exists and generates a `00-join-<slug>` onboarding task instead.
+    </Note>
+  </Step>
+
+  <Step title="Start your first task">
+    Open your AI platform and describe what you want to build. You do not need to issue any special command first — on hook-capable platforms (Claude Code, Cursor, OpenCode, Gemini CLI, Qoder, CodeBuddy, Droid, Pi Agent, and Codex with hooks enabled), Suncode automatically injects session context the moment you start a conversation.
+
+    ```text
+    Add user login with JWT authentication
+    ```
+
+    The AI classifies your request and responds in one of three ways:
+
+    | Request type | When it applies | What the AI does |
+    |---|---|---|
+    | Simple conversation | Q&A, explanation, or lookup with no code changes | Answers directly — no task created |
+    | Inline small task | A contained edit that fits in one turn | Asks whether to create a Suncode task; if you say no, proceeds inline |
+    | Full Suncode task | Multi-file work, durable plan, or spec/workflow changes | Explains why a task is useful and asks for your consent before creating one |
+
+    When you consent to task creation, the AI enters a three-phase workflow:
+
+    1. **Plan** — the `trellis-brainstorm` skill fires. The AI asks focused questions one at a time, drafts a `prd.md` with requirements and acceptance criteria, and writes `design.md` and `implement.md` for complex tasks.
+    2. **Execute** — the `trellis-implement` sub-agent (or main session on agent-less platforms) builds the code against the PRD and specs. The `trellis-check` sub-agent then reviews the diff, runs lint and tests, and self-fixes issues.
+    3. **Finish** — the `trellis-update-spec` skill captures any reusable learnings back into `.trellis/spec/`. The AI proposes a commit plan, waits for your confirmation, and runs the commits.
+
+    If the AI stalls or appears to skip a step, type `/trellis:continue`. Suncode reads the active task's status from `task.json` and the workflow-state breadcrumb to determine exactly which step comes next.
+  </Step>
+
+  <Step title="Finish the session">
+    After the work commits exist, run the finish command to archive the task and record a session journal entry:
+
+    ```text
+    /trellis:finish-work
+    ```
+
+    Suncode appends a journal entry to `.trellis/workspace/your-name/journal-N.md` and archives the task to `.trellis/tasks/archive/YYYY-MM/`. The next time you open an AI session, Suncode reads this journal so the AI can recall what you completed last time and pick up from the right place.
+
+    <Warning>
+      `/trellis:finish-work` requires a clean working tree. It deliberately refuses to run if uncommitted feature code is still present — commit your work first (the AI drives this in Phase 3 of the workflow), then run the finish command.
+    </Warning>
+  </Step>
+</Steps>
+
+## Pull spec templates from a registry
+
+Instead of filling spec files from scratch, pull pre-built spec templates during `trellis init`. Templates give your project a head start with conventions for your stack.
+
+### Official marketplace
+
+```bash
+# Browse available templates interactively
+trellis init -u your-name
+
+# Use a specific template by ID
+trellis init -u your-name --template electron-fullstack
+```
+
+The interactive picker lists all templates from the [official marketplace](https://github.com/mindfold-ai/Trellis/tree/main/marketplace).
+
+### Custom registry
+
+Pull specs from your own GitHub, GitLab, or Bitbucket repository:
+
+```bash
+# Download a directory directly as .trellis/spec/
+trellis init --registry gh:myorg/myrepo/my-team-spec
+
+# Use a registry with an index.json (marketplace mode)
+trellis init --registry gh:myorg/myrepo/marketplace
+
+# Pick a specific template from a custom marketplace
+trellis init --registry gh:myorg/myrepo/marketplace --template my-template
+
+# Specify a branch
+trellis init --registry gh:myorg/myrepo/specs#develop
+
+# GitLab or Bitbucket
+trellis init --registry gitlab:myorg/myrepo/specs
+trellis init --registry bitbucket:myorg/myrepo/specs
+```
+
+The source format is `provider:user/repo[/subdir][#ref]`. The branch defaults to `main` when omitted.
+
+| Provider | Prefix |
+|---|---|
+| GitHub | `gh:` or `github:` |
+| GitLab | `gitlab:` |
+| Bitbucket | `bitbucket:` |
+
+When `.trellis/spec/` already exists, pass `--overwrite` to replace it or `--append` to add only files that don't yet exist. Without either flag, Suncode prompts you interactively.
+
+For private repositories, set `GIGET_AUTH` to a personal access token before running init:
+
+```bash
+GIGET_AUTH=ghp_xxxxx trellis init --registry gh:myorg/private-repo/specs
+```
+
+## Adding skills from the marketplace
+
+Beyond the skills bundled with Suncode, community-contributed skills are available through the [Trellis marketplace](https://github.com/mindfold-ai/marketplace). Use `npx skills add` to install a skill from a GitHub organization or repository directly into your project:
+
+```bash
+npx skills add mindfold-ai/marketplace
+```
+
+This command fetches the skill definitions and writes them into your project's skills directory alongside the built-in Suncode skills. Installed skills are committed to your repository so every team member gets them automatically.
+
+## Keeping Suncode up to date
+
+Suncode tracks three separate versions: the published npm package, your locally installed CLI, and the project files inside your repo.
+
+```bash
+# Step 1 — upgrade the global CLI to the latest published version
+trellis upgrade
+
+# Step 2 — sync the current project's workflow, hooks, and skills to your CLI version
+trellis update
+```
+
+Run `trellis upgrade` first whenever the CLI itself is stale, then run `trellis update` inside each project that needs its bundled files refreshed. `trellis update` can only bring a project as far as your local CLI version — upgrade the CLI first if you need the latest project templates.

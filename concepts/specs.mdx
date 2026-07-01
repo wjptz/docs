@@ -1,0 +1,193 @@
+---
+title: "Specs: Project Conventions That Guide Your AI Agent"
+sidebarTitle: "Specs"
+description: "Specs are Markdown files that encode your team's coding standards so AI agents write consistent, convention-following code every time."
+---
+
+Specs are Markdown files stored inside your repository that tell AI coding agents how your project works — what patterns to follow, what to avoid, and why. Without specs, every agent session starts fresh and improvises. With specs, the agent reads your actual conventions before touching a single file, so the code it writes reflects your team's standards rather than its training defaults.
+
+## Where Specs Live
+
+Trellis scaffolds a spec directory at `.trellis/spec/` when you run `trellis init`. The default layout organizes specs into three top-level directories:
+
+```text
+.trellis/spec/
+├── frontend/
+│   ├── index.md
+│   ├── component-guidelines.md
+│   ├── hook-guidelines.md
+│   ├── state-management.md
+│   ├── type-safety.md
+│   ├── quality-guidelines.md
+│   └── directory-structure.md
+│
+├── backend/
+│   ├── index.md
+│   ├── database-guidelines.md
+│   ├── error-handling.md
+│   ├── logging-guidelines.md
+│   ├── quality-guidelines.md
+│   └── directory-structure.md
+│
+└── guides/
+    ├── index.md
+    ├── cross-layer-thinking-guide.md
+    └── code-reuse-thinking-guide.md
+```
+
+<Note>
+  The `frontend/` and `backend/` directories are conventions, not requirements. Trellis discovers spec layers by scanning one level under `.trellis/spec/` for any directory that contains an `index.md` file. Name your layers after how your project actually divides — by package, runtime, service, or responsibility.
+</Note>
+
+Each `index.md` registers that directory as a spec layer. The index lists the available guideline files and their current fill status, so agents know what to read before writing code.
+
+## How Specs Are Injected
+
+Trellis uses two complementary mechanisms to deliver spec content into AI sessions.
+
+### Automatic Hook Injection
+
+On hook-capable platforms (Claude Code, Cursor, OpenCode, Gemini CLI, Qoder, CodeBuddy, Droid, and Pi Agent), Trellis injects spec context automatically:
+
+- At **session start**, the hook loads spec index paths so the agent knows what convention layers exist.
+- At **implementation time**, the `trellis-before-dev` skill triggers before coding starts, reads the spec index for the affected package or layer, and loads the specific guideline files. The agent learns the rules _before_ writing code, not after.
+- When a **sub-agent launches**, an injection hook pushes the contents of `implement.jsonl` or `check.jsonl` — the task's curated spec manifest — into the sub-agent's context before it starts.
+
+### JSONL Context Manifests
+
+Each task carries two manifest files that list the spec files relevant to that specific piece of work:
+
+| Manifest | Used By | Contents |
+| --- | --- | --- |
+| `implement.jsonl` | `trellis-implement` sub-agent | Spec and research files needed for writing code |
+| `check.jsonl` | `trellis-check` sub-agent | Spec and research files needed for verification |
+
+Each line in a manifest is a plain JSON object:
+
+```jsonl
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Component patterns for this UI work"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Cross-layer verification checklist"}
+{"file": ".trellis/tasks/05-10-new-dashboard/research/api-shape.md", "reason": "Confirmed API contract for the data layer"}
+```
+
+The `reason` field is not optional padding — it tells the agent why this file is relevant, helping it apply the spec correctly rather than treating it as background noise.
+
+<Warning>
+  Do not list source files you are about to modify in your JSONL manifests. Source files are read by agents during implementation, not pre-registered here. Only spec files (`.trellis/spec/**/*.md`) and task research files (`research/*.md`) belong in the manifests.
+</Warning>
+
+## How to Write a Good Spec
+
+A spec that AI agents can act on looks different from a spec written for human review. The `trellis-update-spec` skill writes specs as **executable contracts**: concrete signatures, validated error cases, and code examples that leave no room for ambiguity.
+
+<Tabs>
+  <Tab title="What works">
+    ```markdown
+    #### Convention: Use ORM batch methods, never loop single-row DB calls
+
+    **What**: For any collection of N rows, call the ORM's batch method
+    (`createMany`, `updateMany`, `deleteMany`) once.
+
+    **Why**: Each DB call is a round-trip. A 200-item loop inside a request
+    handler turns 50ms p99 latency into 8s — we've caught this twice in
+    code review (PRs #312, #417).
+
+    **Example**:
+
+    ```ts
+    // ✅ Correct — one round-trip
+    await prisma.user.createMany({ data: users });
+
+    // ❌ Wrong — N round-trips
+    for (const user of users) {
+      await prisma.user.create({ data: user });
+    }
+    ```
+
+    **Related**: `quality-guidelines.md#performance`, `error-handling.md#transactions`
+    ```
+  </Tab>
+  <Tab title="What doesn't work">
+    ```markdown
+    #### Database
+
+    - Use good query patterns
+    - Be careful with SQL
+    - Follow best practices
+    ```
+
+    This spec has no signature, no example, no stated reason, and nothing
+    an agent can act on. It will be ignored or misapplied.
+  </Tab>
+</Tabs>
+
+<Tip>
+  If what you're writing is "what to think about before coding," it belongs in `guides/`. If it's "how to implement safely with concrete constraints," it belongs in a layer spec like `backend/` or `frontend/`.
+</Tip>
+
+Pick the right update shape for what you learned:
+
+| You learned… | Template | Key fields |
+| --- | --- | --- |
+| Why you picked approach X over Y | Design Decision | Context, Options Considered, Decision, Example |
+| The project does X this way | Convention | What, Why, Example, Related |
+| A reusable solution to a recurring problem | Pattern | Problem, Solution, Good/Bad Example, Why |
+| An approach that causes trouble | Forbidden Pattern | Problem snippet, Why it's bad, Correct snippet |
+| An easy-to-make mistake | Common Mistake | Symptom, Cause, Fix, Prevention |
+| Non-obvious behavior | Gotcha | Blockquote with when/how |
+
+For specs that touch a command or API signature, a cross-layer contract, a database schema, or infrastructure wiring, include all seven sections: Scope/Trigger, Signatures, Contracts, Validation & Error Matrix, Good/Base/Bad Cases, Tests Required, and a Wrong vs. Correct pair.
+
+## Updating Specs with `trellis-update-spec`
+
+The `trellis-update-spec` skill runs automatically when a task teaches a reusable rule — after a debugging session, after hitting a non-obvious gotcha, or after making a design decision worth preserving.
+
+<Steps>
+  <Step title="Identify what was learned">
+    The skill asks whether the task uncovered a pattern, a decision, a convention, or a mistake worth capturing. If yes, it continues; otherwise it exits cleanly.
+  </Step>
+  <Step title="Choose the right spec file">
+    The skill inspects the spec index for the relevant layer and picks the most appropriate file. If a new file is needed, it creates one and updates the layer's `index.md`.
+  </Step>
+  <Step title="Write the entry">
+    The skill writes a focused, actionable entry using the appropriate template — not generic advice, but a concrete rule with a code example and a stated reason.
+  </Step>
+  <Step title="Update the index">
+    If a new file was created or the status of an existing file changed, the skill updates the layer's `index.md` so future agents can discover it.
+  </Step>
+</Steps>
+
+You can also trigger `trellis-update-spec` manually from the skill picker on any platform that supports it. Task-local facts — findings specific to one task — stay in the task's `research/` directory. Only stable, reusable rules move into `.trellis/spec/`.
+
+## Context Manifests in Practice
+
+When you create a task on a sub-agent-capable platform, `task.py create` seeds both `implement.jsonl` and `check.jsonl` with a single placeholder line:
+
+```jsonl
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths."}
+```
+
+The AI reads this hint during Phase 1 planning and replaces it with real entries. Here is an example of a curated `implement.jsonl` for a backend task in a monorepo:
+
+```jsonl
+{"file": ".trellis/spec/guides/index.md", "reason": "Shared cross-package thinking guides"}
+{"file": ".trellis/spec/cli/backend/index.md", "reason": "Backend dev guide — task touches Python scripts"}
+{"file": ".trellis/spec/cli/backend/script-conventions.md", "reason": "Script conventions for affected files"}
+{"file": ".trellis/tasks/05-10-new-dashboard/research/auth-library-comparison.md", "reason": "Library choice rationale"}
+```
+
+Use `task.py add-context` to add entries programmatically:
+
+```bash
+python3 .trellis/scripts/task.py add-context "$TASK_DIR" implement \
+  ".trellis/spec/backend/database-guidelines.md" "DB conventions for this task"
+
+python3 .trellis/scripts/task.py add-context "$TASK_DIR" check \
+  ".trellis/spec/guides/cross-layer-thinking-guide.md" "Cross-layer verification"
+```
+
+Validate that all listed files exist before starting implementation:
+
+```bash
+python3 .trellis/scripts/task.py validate "$TASK_DIR"
+```

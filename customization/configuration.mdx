@@ -1,0 +1,144 @@
+---
+title: "Configure Trellis with .trellis/config.yaml Settings"
+sidebarTitle: "Configuration"
+description: "Learn what every key in .trellis/config.yaml does, how to edit it safely, and how Trellis updates add new sections without overwriting yours."
+---
+
+`.trellis/config.yaml` is the project-level configuration file for Trellis runtime behavior. It controls session journal commits, task lifecycle hooks, package mapping, and Codex dispatch mode. Track this file in your repository — it is shared team configuration, not per-machine state. Per-machine identity belongs in `.trellis/.developer`; credentials belong in environment variables or your normal secret manager, not here.
+
+## Edit safely
+
+Most sections in `config.yaml` are optional. Leave commented examples commented until you need them, and edit only the keys your project actually uses. When a key is absent, Trellis uses its built-in default. Keep indentation consistent for nested blocks such as `hooks`, `packages`, and `codex`.
+
+```yaml
+session_commit_message: 'chore: record journal'
+max_journal_lines: 2000
+session_auto_commit: false
+```
+
+<Warning>
+  Hook commands live in tracked project configuration. Do not put tokens, API keys, or
+  machine-specific absolute paths in `.trellis/config.yaml`.
+</Warning>
+
+## All configuration keys
+
+| Key | Default | What it controls |
+|---|---|---|
+| `session_commit_message` | `"chore: record journal"` | Commit message used when Trellis auto-commits journal and index changes |
+| `max_journal_lines` | `2000` | Maximum lines per journal file before Trellis rotates to the next file |
+| `session_auto_commit` | `true` | Whether Trellis auto-stages and auto-commits journal and task archive changes |
+| `hooks` | unset | Shell commands that run after task lifecycle events |
+| `packages` | unset | Package declarations for monorepos, submodules, and polyrepo-style directories |
+| `default_package` | unset | Fallback package when a command or task does not specify one |
+| `update.skip` | unset | Paths that `trellis update` leaves untouched during normal updates |
+| `codex.dispatch_mode` | `inline` | Codex-only choice between main-agent implementation and legacy `trellis-*` sub-agent dispatch |
+
+## Session recording
+
+`session_commit_message` and `max_journal_lines` control how Trellis records session journals.
+
+```yaml
+session_commit_message: 'chore: record journal'
+max_journal_lines: 2000
+```
+
+Set `session_commit_message` if your repo uses a conventional commit style for Trellis journal commits. Set `max_journal_lines` to keep `.trellis/workspace/<developer>/journal-N.md` files at a reviewable size — Trellis starts a new journal file when the current one exceeds this limit.
+
+## Session auto-commit
+
+`session_auto_commit` controls whether Trellis scripts touch git for journal and task archive bookkeeping.
+
+```yaml
+session_auto_commit: false
+```
+
+The default is `true`: Trellis writes files, stages the changes, and creates bookkeeping commits automatically. Set it to `false` when `.trellis/` is intentionally gitignored or when your team wants to review and commit Trellis bookkeeping manually.
+
+Accepted values are `true`, `false`, `yes`, `no`, `1`, `0`, `on`, and `off` (case-insensitive). Invalid values fall back to `true` and print a warning.
+
+## Task lifecycle hooks
+
+The `hooks` key runs shell commands after task lifecycle events. Each command receives the `TASK_JSON_PATH` environment variable, which points at the active task's `task.json`.
+
+```yaml
+hooks:
+  after_create:
+    - "echo 'Task created'"
+  after_start:
+    - "echo 'Task started'"
+  after_finish:
+    - "echo 'Task finished'"
+  after_archive:
+    - "echo 'Task archived'"
+```
+
+The four supported events are `after_create`, `after_start`, `after_finish`, and `after_archive`. Hook failures print a warning but do not block the main task operation — a failing hook never prevents a task from advancing.
+
+A practical use for lifecycle hooks is syncing task state to an external tracker. For example, to post a comment to a Linear issue when a task finishes:
+
+```yaml
+hooks:
+  after_finish:
+    - "python3 scripts/notify-linear.py $TASK_JSON_PATH"
+```
+
+## Package declarations for monorepos
+
+Use `packages` to declare project structure for monorepos and repos with multiple working directories. Set `default_package` to the key Trellis should use when a task or command does not specify one.
+
+```yaml
+packages:
+  frontend:
+    path: packages/frontend
+  backend:
+    path: packages/backend
+  docs:
+    path: docs-site
+    type: submodule
+  webapp:
+    path: ./webapp
+    git: true
+
+default_package: frontend
+```
+
+Use `type: submodule` for git submodules. Use `git: true` when a subdirectory is its own independent git repository, as in polyrepo or meta-repo layouts. `default_package` must match a key declared under `packages`.
+
+## Update skip list
+
+`update.skip` lets you protect paths from being overwritten or deleted during `trellis update` runs.
+
+```yaml
+update:
+  skip:
+    - .claude/commands/
+    - docs-site/
+```
+
+<Note>
+  During breaking migrations run with `--migrate`, Trellis can bypass `update.skip` for
+  migration-required cleanup so the project does not stay half-updated. The update command prints a
+  warning before doing this.
+</Note>
+
+## Codex dispatch mode
+
+`codex.dispatch_mode` is only read by Codex workflows. All other platforms ignore it.
+
+```yaml
+codex:
+  dispatch_mode: inline  # or "sub-agent"
+```
+
+`inline` keeps implementation and checking in the main Codex agent — this is the default. `sub-agent` opts into the older dispatch model where the main agent launches `trellis-implement`, `trellis-check`, or `trellis-research` as sub-agents.
+
+Use `sub-agent` only when you explicitly want that legacy split. The default `inline` mode exists because Codex sub-agents run in isolated turns and cannot inherit the parent session's full task context.
+
+## How updates add new config sections
+
+`trellis init` writes the current template for new projects. For existing projects, `trellis update` preserves your local edits to `.trellis/config.yaml` instead of replacing the file wholesale.
+
+When a Trellis release adds a new configuration section, `trellis update` checks whether that section already appears in your file. If it is missing, Trellis appends the new commented section to the end of `.trellis/config.yaml`.
+
+This append-only path is idempotent and preserves all your existing values. After an update, review any newly appended commented section and uncomment only the keys you want to activate.

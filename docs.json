@@ -1,0 +1,89 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "name": "Suncode",
+  "theme": "luma",
+  "colors": {
+    "primary": "#1515e5"
+  },
+  "favicon": "https://icons.duckduckgo.com/ip3/starter.mintlify.com.ico",
+  "logo": {
+    "light": "https://media.brand.dev/99d23bb0-7527-48e5-b2c1-71011df3a4d8.svg",
+    "dark": "https://media.brand.dev/99d23bb0-7527-48e5-b2c1-71011df3a4d8.svg"
+  },
+  "navbar": {
+    "links": [
+      {
+        "label": "GitHub",
+        "href": "https://github.com/wjptz/suncode"
+      }
+    ],
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/wjptz/suncode"
+    }
+  },
+  "navigation": {
+    "languages": [
+      {
+        "language": "cn",
+        "tabs": [
+          {
+            "tab": "Documentation",
+            "groups": [
+              {
+                "group": "Get Started",
+                "pages": [
+                  "introduction",
+                  "quickstart",
+                  "how-it-works"
+                ]
+              },
+              {
+                "group": "Core Concepts",
+                "pages": [
+                  "concepts/specs",
+                  "concepts/tasks",
+                  "concepts/skills",
+                  "concepts/workspace"
+                ]
+              },
+              {
+                "group": "Guides",
+                "pages": [
+                  "guides/real-world-scenarios",
+                  "guides/team-setup",
+                  "guides/spec-templates",
+                  "guides/ai-tools"
+                ]
+              },
+              {
+                "group": "Customization",
+                "pages": [
+                  "customization/custom-workflow",
+                  "customization/custom-commands",
+                  "customization/custom-skills",
+                  "customization/custom-agents",
+                  "customization/configuration"
+                ]
+              },
+              {
+                "group": "Reference",
+                "pages": [
+                  "reference/commands",
+                  "reference/platform-support",
+                  "reference/marketplace",
+                  "reference/changelog"
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/wjptz/suncode"
+    }
+  }
+}

@@ -1,0 +1,66 @@
+---
+title: "Suncode: AI Workflow Framework for Coding Agents"
+sidebarTitle: "Home"
+description: "Suncode keeps your project specs, conventions, and workflow rules close to the code so every AI coding session starts with the right context."
+---
+
+Suncode is a repo-native workflow layer for AI coding assistants. It automatically injects your project's specs, coding conventions, and workflow rules into every AI session — so agents write code that follows your standards instead of improvising from scratch. Works across Claude Code, Cursor, Codex, Kiro, Gemini CLI, and 12+ other platforms.
+
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Install Suncode and run your first AI-assisted task in minutes.
+  </Card>
+  <Card title="How It Works" icon="circle-info" href="/how-it-works">
+    See the full session lifecycle from startup to archived task.
+  </Card>
+  <Card title="Core Concepts" icon="book-open" href="/concepts/specs">
+    Learn about Specs, Tasks, Skills, and Workspace memory.
+  </Card>
+  <Card title="Platform Support" icon="grid-2" href="/reference/platform-support">
+    Check compatibility with your AI coding tool of choice.
+  </Card>
+</CardGroup>
+
+## Why Suncode?
+
+AI coding tools are powerful, but they forget your project between sessions and improvise conventions from scratch every time. Suncode solves this by keeping engineering rules in the repo — versioned, shared, and auto-injected.
+
+<CardGroup cols={2}>
+  <Card title="Auto-Injection" icon="bolt">
+    Required specs and workflow rules inject into every conversation automatically. Write once, apply forever.
+  </Card>
+  <Card title="Team Sync" icon="users">
+    Specs live in Git. One developer's best practice benefits the whole team immediately.
+  </Card>
+  <Card title="Session Memory" icon="brain">
+    Developer journals persist across sessions. Your AI picks up right where it left off.
+  </Card>
+  <Card title="16+ Platforms" icon="layer-group">
+    Claude Code, Cursor, Codex, Kiro, Gemini CLI, Qoder, and more — one framework for all.
+  </Card>
+</CardGroup>
+
+## Get Started in 3 Steps
+
+<Steps>
+  <Step title="Install Suncode">
+    Install the global CLI via npm:
+    ```bash
+    npm install -g @mindfoldhq/trellis@latest
+    ```
+  </Step>
+  <Step title="Initialize your project">
+    Navigate to your project directory and run init with your developer name and chosen platform:
+    ```bash
+    cd your-project
+    trellis init -u your-name --claude
+    ```
+  </Step>
+  <Step title="Start your first task">
+    Open your AI assistant and describe what you want to build. Suncode automatically injects context, tracks your task, and guides the AI through Plan → Execute → Finish.
+  </Step>
+</Steps>
+
+<Tip>
+  Not sure which platform flag to use? Run `trellis init -u your-name` without any platform flags and Suncode will auto-detect the AI tools installed on your machine.
+</Tip>

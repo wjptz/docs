@@ -1,0 +1,56 @@
+---
+title: "Suncode: AI Workflow Framework for Coding Agents"
+sidebarTitle: "Introduction"
+description: "Suncode is a repo-native workflow layer that injects your project specs into AI sessions so coding agents follow your standards, not improvise."
+---
+
+Suncode (also distributed as **Trellis**) is a workflow framework for AI coding assistants. It sits inside your repository and ensures that every AI session — regardless of which platform or agent you use — starts with accurate project context, follows your coding standards, and leaves durable records of what was done. Where tools like `.cursorrules` or `CLAUDE.md` give an AI a static text file to read, Suncode injects precisely the right specs for each task, enforces review gates through auto-triggered skills, and persists knowledge across sessions through workspace journals committed alongside your code.
+
+## Key concepts
+
+Every Suncode project is built from a small set of building blocks stored under `.trellis/` in your repository. Understanding these concepts tells you where to look when you want to change how AI behaves.
+
+| Concept | Description | Where it lives |
+|---|---|---|
+| **Spec** | Markdown files encoding your coding standards, API conventions, and team rules. AI reads the relevant specs before writing code for a task. | `.trellis/spec/` |
+| **Task** | A unit of work with a requirements doc (`prd.md`), optional design and implementation plans, and context manifests. AI creates and archives tasks automatically. | `.trellis/tasks/` |
+| **Skill** | An auto-triggered workflow module. The platform fires the right skill based on context — brainstorm, before-dev, check, update-spec, or break-loop — without you issuing a command. | Platform skills directory |
+| **Workspace** | Your personal session log. Each developer has a workspace directory with journal files that let AI recall what you did in previous sessions. | `.trellis/workspace/<name>/` |
+| **Command** | An explicit session entry such as `/trellis:finish-work` or `/trellis:continue`. The command surface is deliberately small; skills handle the rest automatically. | Platform commands directory |
+| **Hook** | A script that auto-injects context at session start, on every prompt, or before a sub-agent launches. Hooks are the mechanism behind seamless spec injection on supported platforms. | `.claude/hooks/`, etc. |
+| **Sub-agent** | A specialized AI subprocess for research, implementation, or verification. Sub-agents receive focused context through `implement.jsonl` and `check.jsonl` rather than the full codebase. | Platform agents directory |
+| **Journal** | A session log file appended by `/trellis:finish-work`. The next AI session reads your journal to recall what was accomplished and what task is still active. | `.trellis/workspace/<name>/journal-N.md` |
+
+## How Suncode compares
+
+Other approaches carry every rule in a single file and rely on the AI to remember it — or re-read it — every session. Suncode composes specs per task, enforces workflow through skills, and remembers context across sessions through committed journal files.
+
+| Dimension | `.cursorrules` | `CLAUDE.md` | Raw skills | **Suncode** |
+|---|---|---|---|---|
+| Spec injection | Manually loaded each conversation | Auto-loaded but easily truncated | User-initiated | **Auto-injection via hooks or prelude, precisely loaded per task** |
+| Spec granularity | One large file | One large file | One per skill | **Modular files, composed per task** |
+| Cross-session memory | None | None | None | **Workspace journal persistence** |
+| Workflow enforcement | None | None | None | **Auto-trigger skills + check sub-agent verify loop** |
+| Team sharing | Single user | Single user | Shareable but no standard | **Git-versioned spec library** |
+| Platform support | Cursor only | Claude Code only | Per platform | **16 configured platforms + shared skill ecosystem** |
+
+## Supported platforms
+
+Suncode ships configured platform adapters for Claude Code, Cursor, OpenCode, Codex, Kiro, Gemini CLI, Qoder, CodeBuddy, GitHub Copilot, Droid, Pi Agent, Kilo, Antigravity, Devin, Reasonix, and ZCode. Any agent that reads the `.agents/skills/` standard — including Amp, Cline, Warp, Firebender, and Kimi Code CLI — can also consume Suncode skills without additional setup.
+
+## Where to go next
+
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Install the CLI and run your first AI-managed task in minutes.
+  </Card>
+  <Card title="How It Works" icon="diagram-project" href="/how-it-works">
+    Trace the full session lifecycle from prompt to archived task.
+  </Card>
+  <Card title="Specs" icon="file-lines" href="/concepts/specs">
+    Learn how to write executable coding standards AI can act on.
+  </Card>
+  <Card title="Platform Support" icon="grid-2" href="/reference/platform-support">
+    See which features are available on your AI platform.
+  </Card>
+</CardGroup>

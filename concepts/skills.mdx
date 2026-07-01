@@ -1,0 +1,133 @@
+---
+title: "Skills: Auto-Triggered AI Workflow Modules for Trellis"
+sidebarTitle: "Skills"
+description: "Skills are auto-triggered workflow modules that fire based on context — no commands to remember, no manual routing through the development lifecycle."
+---
+
+A skill is a workflow module that the AI platform invokes automatically based on what you are doing. When you approve a planning request, `trellis-brainstorm` fires. When you are about to write code, `trellis-before-dev` fires. When implementation finishes, `trellis-check` fires. You do not type commands to activate them — the platform matches on your intent and loads the right skill without interrupting your flow.
+
+This is different from a slash command, which you trigger manually at a specific moment, and different from a sub-agent, which is an isolated AI subprocess dispatched to complete a bounded role. Skills run inside the main session and provide structured guidance at the right phase. Sub-agents run in a separate context with their own tool access. Commands mark session boundaries.
+
+## Commands vs. Skills vs. Sub-Agents
+
+| Kind | How it triggers | Runs where | Typical purpose |
+| --- | --- | --- | --- |
+| **Command** | You type it explicitly | Main session | Session boundaries: start, finish-work, continue |
+| **Skill** | Platform auto-matches on intent; manual fallback available | Main session | Phase guidance: brainstorm, spec load, check, update-spec |
+| **Sub-agent** | Main session dispatches it | Isolated subprocess | Bounded roles: research, implement, check with own tool wiring |
+
+## Built-in Skills
+
+<AccordionGroup>
+  <Accordion title="trellis-brainstorm" icon="lightbulb">
+    **Triggers when**: You approve a task-creation request or ask to plan a new feature.
+
+    **What it does**: Turns an approved planning request into concrete task artifacts without asking you to remember the right format or workflow steps.
+
+    1. Inspects the existing codebase, tests, configs, docs, spec layers, and task history before asking any questions.
+    2. Proposes a task name and slug, then calls `task.py create` to write the task directory.
+    3. Drafts `prd.md` with requirements, constraints, acceptance criteria, and out-of-scope items.
+    4. Asks one clarifying question at a time, always including a recommended answer so you can move fast.
+    5. For complex tasks, adds `design.md` (technical design) and `implement.md` (execution plan) before implementation starts.
+    6. Curates `implement.jsonl` and `check.jsonl` with the spec and research files the sub-agents will need.
+  </Accordion>
+
+  <Accordion title="trellis-before-dev" icon="book-open">
+    **Triggers when**: You are about to write code on an active task.
+
+    **What it does**: Loads the spec index for the package or layer the task touches, then reads the specific guideline files listed in the pre-development checklist. The agent learns your conventions _before_ writing code, not after — ensuring the first draft follows your patterns rather than requiring a cleanup pass.
+
+    On hook-capable platforms this fires automatically. On platforms without hooks, the main session loads it inline at the start of the execute phase.
+  </Accordion>
+
+  <Accordion title="trellis-check" icon="circle-check">
+    **Triggers when**: Implementation finishes on an active task.
+
+    **What it does**: Runs a structured verification and self-fix loop:
+
+    1. Runs `git diff --name-only HEAD` to identify changed files.
+    2. Discovers which spec layers apply to those files.
+    3. Compares the diff against the quality checklist in each applicable layer's index.
+    4. Runs `pnpm lint`, `pnpm typecheck`, and `pnpm test` (or the equivalent for your stack) on affected packages.
+    5. Self-fixes violations in a bounded loop, then reports what was fixed and what remains.
+
+    The `trellis-check` sub-agent wraps this same logic — when the platform supports sub-agents, the main session hands verification off and the sub-agent runs its own internal retry loop.
+  </Accordion>
+
+  <Accordion title="trellis-update-spec" icon="pen-to-square">
+    **Triggers when**: A task surfaces a reusable rule — after a debugging session, after hitting a non-obvious gotcha, or after making a design decision worth preserving.
+
+    **What it does**: Captures the learning as an executable contract in `.trellis/spec/`. It picks the right spec file for the affected layer, writes a focused entry using the appropriate template (Design Decision, Convention, Pattern, Forbidden Pattern, Common Mistake, or Gotcha), and updates the layer's `index.md` if a new file was created.
+
+    The skill distinguishes between task-local facts (which stay in the task's `research/` directory) and stable team rules (which move into `.trellis/spec/` for all future tasks to load).
+  </Accordion>
+
+  <Accordion title="trellis-break-loop" icon="rotate">
+    **Triggers when**: You resolve a hard bug, especially one where earlier fix attempts failed.
+
+    **What it does**: Produces a five-dimension retrospective analysis so the same class of bug cannot recur:
+
+    1. **Root-cause classification** — missing spec, contract violation, change propagation failure, test gap, or implicit assumption.
+    2. **Why earlier fixes failed** — analysis of what each attempt got wrong.
+    3. **Prevention mechanisms** — specific actions: spec update, type constraint, lint rule, new test, review checklist addition, or documentation.
+    4. **Systematic expansion** — other places in the codebase that share the same pattern.
+    5. **Knowledge capture** — routes findings into `trellis-update-spec` so the lesson persists.
+
+    > The value of debugging is not fixing _this_ bug — it's making sure this class of bugs never happens again.
+  </Accordion>
+</AccordionGroup>
+
+## Sub-Agent Roles
+
+Sub-agents are isolated AI subprocesses with their own prompt, tool access, and (on hook-capable platforms) their own context injection pipeline. The main session dispatches them for bounded roles and resumes coordination after they finish.
+
+| Sub-agent | Restriction | When the main session dispatches it |
+| --- | --- | --- |
+| `trellis-research` | Read-only | Codebase search, pattern discovery, API lookup, or any investigation that should not touch files |
+| `trellis-implement` | Writes code, no git commit | Once `prd.md` and planning artifacts are reviewed and the task is `in_progress` |
+| `trellis-check` | Writes code (self-fixes only) | After implementation; runs its own verify-and-fix loop internally |
+
+On Claude Code, Cursor, OpenCode, CodeBuddy, Droid, and Pi Agent, implement and check sub-agents receive the correct JSONL context (`implement.jsonl` and `check.jsonl`) automatically via hook injection before they start. On Codex, Gemini CLI, Qoder, Copilot, and Kiro, the sub-agent definition tells the agent to pull and read the active task's JSONL files itself on startup. Research findings are written to the task's `research/` directory regardless of platform.
+
+## Manually Invoking a Skill
+
+Skills are auto-triggered by design, but you can always invoke them manually if the auto-match misses or if you want to run one out of sequence.
+
+<Tabs>
+  <Tab title="Claude Code / OpenCode">
+    Open the skill picker with `/` and search for the skill name:
+
+    ```
+    /trellis:trellis-brainstorm
+    /trellis:trellis-check
+    /trellis:trellis-update-spec
+    ```
+  </Tab>
+  <Tab title="Cursor">
+    Use the `@` agent mention or the skill picker in the chat panel. Skills are registered under the `.cursor/` directory and appear in autocomplete.
+  </Tab>
+  <Tab title="Kiro">
+    Skills are exposed as agent files under `.kiro/`. Select the skill from the agent menu or reference it by name in the chat.
+  </Tab>
+  <Tab title="Other platforms">
+    On Kilo, Antigravity, and Devin, the main session reads workflow and skill entries explicitly. Type the skill name as part of your message to direct the agent to load and execute it.
+  </Tab>
+</Tabs>
+
+<Tip>
+  If a skill fires when you don't want it — for example, if `trellis-brainstorm` starts while you are only asking a clarifying question — simply tell the agent to stop and it will exit the skill and return to normal conversation.
+</Tip>
+
+## Skill Routing
+
+The AI decides which skill to load by consulting the routing table in `.trellis/workflow.md`. The default table looks like this:
+
+| User intent | Skill |
+| --- | --- |
+| Wants a new feature or requirement is unclear | `trellis-brainstorm` |
+| About to write code or start implementing | `trellis-before-dev` |
+| Finished writing or wants to verify | `trellis-check` |
+| Stuck or has fixed the same bug multiple times | `trellis-break-loop` |
+| Spec needs updating after a learning | `trellis-update-spec` |
+
+You can extend this table in `workflow.md` to add custom skills your team ships. No code change is needed — the AI reads the updated table at the next session start.
